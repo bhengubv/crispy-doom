@@ -52,26 +52,43 @@ extern boolean menuactive;
 #define SHOULDER_LX  0.060f
 #define SHOULDER_RX  0.940f
 
-#define PILL_Y       0.075f
-#define PILL_HH      0.032f
-#define PILL_TEXT_H  0.030f
-#define PILL_PAD     0.022f
+#define PILL_Y       0.078f
+#define PILL_HH      0.042f
+#define PILL_TEXT_H  0.036f
+#define PILL_PAD     0.026f
 #define SELECT_X     0.440f
 #define START_X      0.560f
 
+// The D-pad and the face cluster share CLUSTER_Y. On a PSP those two sit at
+// exactly the same height, mirrored across the centre line, and the eye reads
+// any drift between them as the whole overlay being tilted.
+#define CLUSTER_Y    0.460f
+
 #define DPAD_CX      0.072f
-#define DPAD_CY      0.400f
+#define DPAD_CY      CLUSTER_Y
 #define DPAD_ARM     0.115f
 #define DPAD_WAIST   0.038f   // half-thickness of the cross bars
 
-#define NUB_CX       0.128f
-#define NUB_CY       0.720f
-#define NUB_TRACK    0.145f
-#define NUB_CAP      0.062f
-#define NUB_DEAD     0.022f
+// DOOM's status bar owns the bottom of the frame -- 32 of its 200 rows, so 16%
+// -- and the player reads health and ammo off it constantly. Controls are held
+// clear of it with a margin rather than overlapping it for a few pixels of
+// extra reach.
+#define HUD_TOP      0.840f
+#define HUD_MARGIN   0.028f
+#define SAFE_BOTTOM  (HUD_TOP - HUD_MARGIN)
+
+// The nub is deliberately smaller than the D-pad, as on the hardware -- it is a
+// thumb slider, not the hero. Sized larger it dominates the left side and drags
+// the whole composition down with it. It is the lowest control, so it is the
+// one pinned to the safe area.
+#define NUB_CX       0.105f
+#define NUB_TRACK    0.098f
+#define NUB_CAP      0.042f
+#define NUB_CY       (SAFE_BOTTOM - NUB_TRACK)
+#define NUB_DEAD     0.015f
 
 #define FACE_CX      0.868f
-#define FACE_CY      0.545f
+#define FACE_CY      CLUSTER_Y
 #define FACE_OFF     0.175f
 #define FACE_R_BIG   0.100f
 #define FACE_R_MID   0.090f
@@ -776,15 +793,21 @@ static void DrawBody(SDL_Renderer *r, int i, float w, float h, boolean lit)
         rr_ = ACC_R; rg_ = ACC_G; rb_ = ACC_B;
     }
 
+    // A dark halo first. DOOM's walls can be brighter than the controls, and a
+    // thin rim over a bright wall disappears -- the pills lose that fight worst
+    // because they have far less body mass than the discs. The halo gives every
+    // control separation from whatever is behind it.
     if (btn[i].pill)
     {
         float hw = btn[i].hw * h;
 
+        DrawPill(r, false, cx, cy, hw + 9.0f, rr + 9.0f, 0, 0, 0, 110);
         DrawPill(r, false, cx, cy, hw + 3.0f, rr + 3.0f, rr_, rg_, rb_, 255);
         DrawPill(r, true,  cx, cy, hw, rr, STEEL_R, STEEL_G, STEEL_B, 255);
     }
     else
     {
+        DrawSq(r, tex_disc_f, cx, cy, rr + 9.0f, 0, 0, 0, 110);
         DrawSq(r, tex_disc_f, cx, cy, rr + 3.0f, rr_, rg_, rb_, 255);
         DrawSq(r, tex_disc_g, cx, cy, rr, STEEL_R, STEEL_G, STEEL_B, 255);
         DrawSq(r, tex_hl, cx, cy, rr, 255, 255, 255, 105);
@@ -870,6 +893,7 @@ void AT_DrawGhost(SDL_Renderer *r)
             float ch = da * 0.19f;   // chevron size
             float co = da * 0.62f;   // chevron offset from centre
 
+            DrawSq(r, tex_dpad_f, dcx, dcy, da + 9.0f, 0, 0, 0, 110);
             DrawSq(r, tex_dpad_f, dcx, dcy, da + 3.0f, ACC_R, ACC_G, ACC_B, 255);
             DrawSq(r, tex_dpad_g, dcx, dcy, da, STEEL_R, STEEL_G, STEEL_B, 255);
 
@@ -882,6 +906,7 @@ void AT_DrawGhost(SDL_Renderer *r)
 
             // Concave dish, accent track, convex cap: the inverted gradient on
             // the dish is what sells the cap as sitting inside it.
+            DrawSq(r, tex_disc_f, ncx, ncy, NUB_TRACK * h + 9.0f, 0, 0, 0, 110);
             DrawSq(r, tex_dish, ncx, ncy, NUB_TRACK * h,
                    STEEL_R, STEEL_G, STEEL_B, 255);
             DrawSq(r, tex_track, ncx, ncy, NUB_TRACK * h,
