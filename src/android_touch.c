@@ -70,10 +70,15 @@ extern boolean menuactive;
 // overlapped (D-pad reached 0.598, nub began at 0.596). Since HitDpad is tested
 // first, the D-pad silently ate touches aimed at the nub. Riding it up opens a
 // real channel between the two. Authenticity loses to thumbs here.
-#define DPAD_CX      0.072f
-#define DPAD_CY      0.330f
-#define DPAD_ARM     0.115f
-#define DPAD_WAIST   0.038f   // half-thickness of the cross bars
+// D-pad and nub share a centre line, so the left column reads as one column
+// rather than two shapes that happen to be near each other. LEFT_CX is set so
+// the D-pad -- the wider of the two -- keeps a proper margin off the edge.
+#define LEFT_CX      0.098f
+
+#define DPAD_CX      LEFT_CX
+#define DPAD_CY      0.340f
+#define DPAD_ARM     0.140f
+#define DPAD_WAIST   0.046f   // half-thickness of the cross bars
 
 // DOOM's status bar owns the bottom of the frame -- 32 of its 200 rows, so 16%
 // -- and the player reads health and ammo off it constantly. Controls are held
@@ -87,7 +92,7 @@ extern boolean menuactive;
 // thumb slider, not the hero. Sized larger it dominates the left side and drags
 // the whole composition down with it. It is the lowest control, so it is the
 // one pinned to the safe area.
-#define NUB_CX       0.105f
+#define NUB_CX       LEFT_CX
 #define NUB_TRACK    0.098f
 #define NUB_CAP      0.042f
 #define NUB_CY       (SAFE_BOTTOM - NUB_TRACK)
