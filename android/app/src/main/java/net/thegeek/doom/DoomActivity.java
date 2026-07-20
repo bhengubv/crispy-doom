@@ -1,10 +1,12 @@
 package net.thegeek.doom;
 
 import android.content.pm.ActivityInfo;
+import android.net.Uri;
 import android.os.Bundle;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
 import org.libsdl.app.SDLActivity;
 
 // Native Crispy Doom for Circle OS. Extracts the bundled freedoom IWAD to the
@@ -40,6 +42,32 @@ public class DoomActivity extends SDLActivity {
         }
         fos.close();
         in.close();
+    }
+
+    // Settings live in the Arcade so DOOM can also ship standalone. The Arcade
+    // launches us with circledoom://play?ghost=1&opacity=35 and we translate
+    // the query into argv, which SDLActivity hands to SDL_main.
+    @Override
+    protected String[] getArguments() {
+        ArrayList<String> args = new ArrayList<String>();
+        try {
+            Uri data = getIntent() != null ? getIntent().getData() : null;
+            if (data != null) {
+                String ghost = data.getQueryParameter("ghost");
+                if (ghost != null && ghost.length() > 0) {
+                    args.add("-ghost");
+                    args.add(ghost);
+                }
+                String opacity = data.getQueryParameter("opacity");
+                if (opacity != null && opacity.length() > 0) {
+                    args.add("-ghostalpha");
+                    args.add(opacity);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace(); // never let a malformed intent stop the game
+        }
+        return args.toArray(new String[0]);
     }
 
     @Override

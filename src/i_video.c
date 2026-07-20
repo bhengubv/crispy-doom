@@ -925,6 +925,10 @@ void I_FinishUpdate (void)
     }
 #endif
 
+    // [circle] Ghost controls, drawn over the finished frame at native
+    // panel resolution so they stay crisp and edge-to-edge play is kept.
+    AT_DrawGhost(renderer);
+
     // Draw!
 
     SDL_RenderPresent(renderer);
