@@ -59,24 +59,27 @@ extern boolean menuactive;
 #define SELECT_X     0.440f
 #define START_X      0.560f
 
-// CLUSTER_Y centres the face diamond in the space between the top pills and
-// the status bar.
-#define CLUSTER_Y    0.460f
+// The D-pad and the face diamond share CLUSTER_Y because on the hardware they
+// are level, mirrored across the centre line. That relationship is most of what
+// makes this read as a PSP rather than as a generic touch overlay, so it is not
+// something to trade away for spacing -- an earlier pass did exactly that and
+// the silhouette went with it.
+//
+// The value is solved, not picked. The left column is the binding side: it has
+// to clear the L pill above and the nub below, and the nub is itself pinned to
+// SAFE_BOTTOM. Centring the D-pad's hit area in what is left puts CLUSTER_Y at
+// 0.362 with ~0.066 of height -- about 71px -- free on both sides of it. The
+// face cluster imposes nothing here: it is horizontally clear of the top pills,
+// so it can ride as high as the diamond needs.
+#define CLUSTER_Y    0.362f
 
-// The D-pad deliberately does NOT sit at CLUSTER_Y, even though on the hardware
-// it is level with the face buttons. The left column carries two controls to
-// the right's one, so levelling it left only 0.04 of height between the D-pad
-// and the nub -- and once touch slop is applied their hit areas actually
-// overlapped (D-pad reached 0.598, nub began at 0.596). Since HitDpad is tested
-// first, the D-pad silently ate touches aimed at the nub. Riding it up opens a
-// real channel between the two. Authenticity loses to thumbs here.
 // D-pad and nub share a centre line, so the left column reads as one column
 // rather than two shapes that happen to be near each other. LEFT_CX is set so
 // the D-pad -- the wider of the two -- keeps a proper margin off the edge.
 #define LEFT_CX      0.098f
 
 #define DPAD_CX      LEFT_CX
-#define DPAD_CY      0.340f
+#define DPAD_CY      CLUSTER_Y
 #define DPAD_ARM     0.140f
 #define DPAD_WAIST   0.046f   // half-thickness of the cross bars
 
