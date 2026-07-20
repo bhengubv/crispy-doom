@@ -59,13 +59,19 @@ extern boolean menuactive;
 #define SELECT_X     0.440f
 #define START_X      0.560f
 
-// The D-pad and the face cluster share CLUSTER_Y. On a PSP those two sit at
-// exactly the same height, mirrored across the centre line, and the eye reads
-// any drift between them as the whole overlay being tilted.
+// CLUSTER_Y centres the face diamond in the space between the top pills and
+// the status bar.
 #define CLUSTER_Y    0.460f
 
+// The D-pad deliberately does NOT sit at CLUSTER_Y, even though on the hardware
+// it is level with the face buttons. The left column carries two controls to
+// the right's one, so levelling it left only 0.04 of height between the D-pad
+// and the nub -- and once touch slop is applied their hit areas actually
+// overlapped (D-pad reached 0.598, nub began at 0.596). Since HitDpad is tested
+// first, the D-pad silently ate touches aimed at the nub. Riding it up opens a
+// real channel between the two. Authenticity loses to thumbs here.
 #define DPAD_CX      0.072f
-#define DPAD_CY      CLUSTER_Y
+#define DPAD_CY      0.330f
 #define DPAD_ARM     0.115f
 #define DPAD_WAIST   0.038f   // half-thickness of the cross bars
 
@@ -93,6 +99,18 @@ extern boolean menuactive;
 #define FACE_R_BIG   0.100f
 #define FACE_R_MID   0.090f
 #define FACE_R_SML   0.078f
+
+// Clearance is enforced rather than merely documented -- this layout has drifted
+// into overlapping touch targets twice, and an overlap is invisible in a
+// screenshot: the wrong control just quietly answers instead.
+_Static_assert(DPAD_CY + DPAD_ARM * TOUCH_SLOP <
+               NUB_CY - NUB_TRACK * TOUCH_SLOP,
+               "D-pad and nub touch targets overlap");
+_Static_assert(PILL_Y + PILL_HH * TOUCH_SLOP <
+               DPAD_CY - DPAD_ARM * TOUCH_SLOP,
+               "top pills and D-pad touch targets overlap");
+_Static_assert(NUB_CY + NUB_TRACK <= SAFE_BOTTOM,
+               "nub runs into the status bar");
 
 // --- palette. STEEL and ACCENT are the Arcade's. The four face symbols use the
 // --- authentic PlayStation colours; the user signed that off specifically,
