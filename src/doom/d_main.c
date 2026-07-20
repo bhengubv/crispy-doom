@@ -341,6 +341,20 @@ boolean D_Display (void)
     }
 
 
+    // [circle] Darken the scene behind an active menu. DOOM draws menus
+    // straight over the live view, so on a big bright phone the red menu text
+    // is left fighting a busy scene. Remapping the paletted framebuffer through
+    // a darker colormap dims the scene and makes the text legible, without
+    // touching any menu art. Cheap: one table lookup per pixel, menu-only.
+    if (menuactive)
+    {
+	extern lighttable_t *colormaps;
+	const lighttable_t *dark = colormaps + 16 * 256;
+	int i, n = SCREENWIDTH * SCREENHEIGHT;
+	for (i = 0; i < n; i++)
+	    I_VideoBuffer[i] = dark[I_VideoBuffer[i]];
+    }
+
     // menus go directly to the screen
     M_Drawer ();          // menu is drawn even on top of everything
     NetUpdate ();         // send out any new accumulation

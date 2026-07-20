@@ -1,6 +1,7 @@
 package net.thegeek.doom;
 
 import android.content.pm.ActivityInfo;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import java.io.File;
@@ -20,6 +21,10 @@ public class DoomActivity extends SDLActivity {
         // past the column buffer (R_DrawColumn range error). Force it here so we
         // don't depend on the manifest being honoured by the launcher/OEM skin.
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        // Route the hardware volume rocker to the game's audio (the media
+        // stream, where SDL plays). Without this the rocker adjusts the ring
+        // stream by default, so pressing it does nothing to DOOM's volume.
+        setVolumeControlStream(AudioManager.STREAM_MUSIC);
         try {
             extractAsset("freedoom2.wad");
         } catch (Exception e) {
@@ -62,6 +67,11 @@ public class DoomActivity extends SDLActivity {
                 if (opacity != null && opacity.length() > 0) {
                     args.add("-ghostalpha");
                     args.add(opacity);
+                }
+                String shader = data.getQueryParameter("shader");
+                if (shader != null && shader.length() > 0) {
+                    args.add("-shader");
+                    args.add(shader);
                 }
             }
         } catch (Exception e) {
