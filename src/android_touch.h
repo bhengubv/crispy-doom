@@ -14,6 +14,10 @@ void AT_HandleTouch(SDL_Event *ev);
 // resolution instead of being upscaled with the game framebuffer.
 void AT_DrawGhost(SDL_Renderer *r);
 
+// True while the on-screen controls are active. The GPU upscale must stand down
+// when this is true -- raw GL and SDL_Renderer cannot share a frame here.
+boolean AT_GhostActive(void);
+
 // Picks crispy->hires from the panel resolution, once, at startup.
 void AT_AutoPickRenderScale(void);
 

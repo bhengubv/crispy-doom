@@ -42,6 +42,7 @@
 #include "i_timer.h"
 #include "i_video.h"
 #include "android_touch.h"
+#include "android_shader.h"
 #include "m_argv.h"
 #include "m_config.h"
 #include "m_misc.h"
@@ -899,22 +900,42 @@ void I_FinishUpdate (void)
 
     SDL_RenderClear(renderer);
 
-    if (smooth_pixel_scaling && !force_software_renderer)
+    // [circle] Edge-directed GPU upscale first, if it is wanted and usable. It
+    // samples the raw game texture rather than the pre-upscaled one, so it has
+    // actual pixel art to reconstruct from. It reports false whenever it cannot
+    // run -- wrong renderer backend, shader would not build, or switched off --
+    // and crispy's own scaling below then runs exactly as it always did.
+    // Edge-directed GPU upscale, but only when the on-screen controls are off.
+    // It draws with raw GL to the default framebuffer, and SDL_Renderer cannot
+    // reliably draw the controls over that on this device, so the two cannot
+    // share a frame -- the controls win, and the shader engages only without
+    // them. When it does not run, crispy's own scaling below is unchanged.
+    boolean shader_drew = false;
+    if (!AT_GhostActive() &&
+        AS_Present(renderer, texture, SCREENWIDTH, SCREENHEIGHT))
     {
-        // Render this intermediate texture into the upscaled texture
-        // using "nearest" integer scaling.
-        SDL_SetRenderTarget(renderer, texture_upscaled);
-        SDL_RenderCopy(renderer, texture, NULL, NULL);
-
-        // Finally, render this upscaled texture to screen using linear scaling.
-
-        SDL_SetRenderTarget(renderer, NULL);
-        SDL_RenderCopy(renderer, texture_upscaled, NULL, NULL);
+        shader_drew = true;
     }
     else
     {
-        SDL_SetRenderTarget(renderer, NULL);
-        SDL_RenderCopy(renderer, texture, NULL, NULL);
+        if (smooth_pixel_scaling && !force_software_renderer)
+        {
+            // Render this intermediate texture into the upscaled texture
+            // using "nearest" integer scaling.
+            SDL_SetRenderTarget(renderer, texture_upscaled);
+            SDL_RenderCopy(renderer, texture, NULL, NULL);
+
+            // Finally, render this upscaled texture to screen using linear
+            // scaling.
+
+            SDL_SetRenderTarget(renderer, NULL);
+            SDL_RenderCopy(renderer, texture_upscaled, NULL, NULL);
+        }
+        else
+        {
+            SDL_SetRenderTarget(renderer, NULL);
+            SDL_RenderCopy(renderer, texture, NULL, NULL);
+        }
     }
 
 #ifdef CRISPY_TRUECOLOR

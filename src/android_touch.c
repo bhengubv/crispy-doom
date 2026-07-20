@@ -1015,6 +1015,18 @@ void AT_DrawGhost(SDL_Renderer *r)
     }
 }
 
+// True while the on-screen controls are being drawn. The edge-directed shader
+// must not run in that case: it draws with raw GL to the default framebuffer,
+// after which SDL_Renderer cannot reliably put the controls on top (its cached
+// GL state is stale), so the two cannot share a frame on this device. Letting
+// the controls win keeps the game playable; the shader engages only when they
+// are off.
+boolean AT_GhostActive(void)
+{
+    ReadGhostArgs();
+    return ghost_on ? true : false;
+}
+
 // ---------------------------------------------------------------------------
 // input
 // ---------------------------------------------------------------------------
