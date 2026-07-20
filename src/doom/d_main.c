@@ -349,7 +349,7 @@ boolean D_Display (void)
     if (menuactive)
     {
 	extern lighttable_t *colormaps;
-	const lighttable_t *dark = colormaps + 16 * 256;
+	const lighttable_t *dark = colormaps + 24 * 256;
 	int i, n = SCREENWIDTH * SCREENHEIGHT;
 	for (i = 0; i < n; i++)
 	    I_VideoBuffer[i] = dark[I_VideoBuffer[i]];
