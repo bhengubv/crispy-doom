@@ -364,14 +364,10 @@ static int HitButton(float fx, float fy)
         return -1;
     }
 
+    // Only reached outside menus -- the menu case is handled before this in
+    // AT_HandleTouch, so every button is live here.
     for (i = 0; i < NBTN; i++)
     {
-        // While a menu is up only START is live; the rest would fight the
-        // drag/tap menu navigation.
-        if (menuactive && i != B_START)
-        {
-            continue;
-        }
         if (HitOne(i, fx, fy))
         {
             return i;
@@ -397,6 +393,20 @@ static boolean HitNub(float fx, float fy)
     float rr = NUB_TRACK * TOUCH_SLOP;
 
     return (dx * dx + dy * dy) <= (rr * rr);
+}
+
+// The menu arrow key for a D-pad touch: dominant axis wins, so a thumb near a
+// diagonal picks one direction rather than firing two.
+static int DpadArrow(float fx, float fy)
+{
+    float dx = (fx - DPAD_CX) * cur_aspect;
+    float dy = (fy - DPAD_CY);
+
+    if (fabsf(dx) > fabsf(dy))
+    {
+        return (dx > 0.0f) ? KEY_RIGHTARROW : KEY_LEFTARROW;
+    }
+    return (dy > 0.0f) ? KEY_DOWNARROW : KEY_UPARROW;
 }
 
 static void ApplyDpad(float fx, float fy)
@@ -920,18 +930,15 @@ void AT_DrawGhost(SDL_Renderer *r)
         SDL_RenderClear(r);
         SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 
-        if (!menuactive)
+        // The D-pad is drawn in menus too -- it navigates them (up/down move,
+        // left/right adjust sliders like volume). Only the nub, which has no
+        // menu role, is hidden while a menu is up.
         {
             float dcx = DPAD_CX * w;
             float dcy = DPAD_CY * h;
             float da  = DPAD_ARM * h;
-            float ncx = NUB_CX * w;
-            float ncy = NUB_CY * h;
-            float cpx = ncx + nub_dx * h;
-            float cpy = ncy + nub_dy * h;
-
-            float ch = da * 0.19f;   // chevron size
-            float co = da * 0.62f;   // chevron offset from centre
+            float ch  = da * 0.19f;   // chevron size
+            float co  = da * 0.62f;   // chevron offset from centre
 
             DrawSq(r, tex_dpad_f, dcx, dcy, da + 9.0f, 0, 0, 0, 110);
             DrawSq(r, tex_dpad_f, dcx, dcy, da + 3.0f, ACC_R, ACC_G, ACC_B, 255);
@@ -943,6 +950,14 @@ void AT_DrawGhost(SDL_Renderer *r)
             DrawSqRot(r, tex_tri_s, dcx, dcy + co, ch, 180.0, ACC_R, ACC_G, ACC_B, 200);
             DrawSqRot(r, tex_tri_s, dcx - co, dcy, ch, 270.0, ACC_R, ACC_G, ACC_B, 200);
             DrawSqRot(r, tex_tri_s, dcx + co, dcy, ch,  90.0, ACC_R, ACC_G, ACC_B, 200);
+        }
+
+        if (!menuactive)
+        {
+            float ncx = NUB_CX * w;
+            float ncy = NUB_CY * h;
+            float cpx = ncx + nub_dx * h;
+            float cpy = ncy + nub_dy * h;
 
             // Concave dish, accent track, convex cap: the inverted gradient on
             // the dish is what sells the cap as sitting inside it.
@@ -963,7 +978,8 @@ void AT_DrawGhost(SDL_Renderer *r)
             float cx, cy, rr;
             Uint8 sr = 255, sg = 255, sb = 255;
 
-            if (menuactive && i != B_START)
+            // In menus only O (confirm) and START (back) have a role.
+            if (menuactive && i != B_START && i != B_FIRE)
             {
                 continue;
             }
@@ -1052,18 +1068,28 @@ void AT_HandleTouch(SDL_Event *ev)
     switch (ev->type)
     {
         case SDL_FINGERDOWN:
-            b = HitButton(x, y);
-
-            if (b >= 0)
-            {
-                btn[b].down = true;
-                btn[b].finger = ev->tfinger.fingerId;
-                PostKey(ev_keydown, ButtonKey(b));
-                return;
-            }
-
             if (menuactive)
             {
+                // The pad drives the menu: D-pad = arrows (up/down move,
+                // left/right adjust sliders such as Sound Volume), O = confirm,
+                // START = back. All discrete taps -- menus want no held keys.
+                if (ghost_on && HitDpad(x, y))
+                {
+                    TapKey(DpadArrow(x, y));
+                    return;
+                }
+                if (ghost_on && HitOne(B_FIRE, x, y))
+                {
+                    TapKey(KEY_ENTER);
+                    return;
+                }
+                if (ghost_on && HitOne(B_START, x, y))
+                {
+                    TapKey(KEY_ESCAPE);
+                    return;
+                }
+                // Fallback: a drag on empty space still navigates and a tap
+                // still confirms, for anyone not using the pad.
                 if (!look_on)
                 {
                     look_on = true;
@@ -1072,6 +1098,16 @@ void AT_HandleTouch(SDL_Event *ev)
                     look_oy = y;
                     look_t0 = SDL_GetTicks();
                 }
+                return;
+            }
+
+            b = HitButton(x, y);
+
+            if (b >= 0)
+            {
+                btn[b].down = true;
+                btn[b].finger = ev->tfinger.fingerId;
+                PostKey(ev_keydown, ButtonKey(b));
                 return;
             }
 
