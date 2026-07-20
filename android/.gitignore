@@ -1,0 +1,17 @@
+# Vendored SDL sources + downloaded deps -- re-fetched at setup, not committed
+deps/
+app/jni/SDL/
+app/jni/SDL2_mixer/
+app/jni/SDL2_net/
+
+# Bundled IWAD (28MB freedoom, fetched at setup)
+app/src/main/assets/*.wad
+
+# Build output / machine-specific
+build/
+app/build/
+app/libs/
+app/libs.bak/
+.gradle/
+local.properties
+obj/

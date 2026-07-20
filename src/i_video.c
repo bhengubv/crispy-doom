@@ -41,6 +41,7 @@
 #include "i_system.h"
 #include "i_timer.h"
 #include "i_video.h"
+#include "android_touch.h"
 #include "m_argv.h"
 #include "m_config.h"
 #include "m_misc.h"
@@ -494,6 +495,12 @@ void I_GetEvent(void)
                 {
                     I_HandleMouseEvent(&sdlevent);
                 }
+                break;
+
+            case SDL_FINGERDOWN:
+            case SDL_FINGERMOTION:
+            case SDL_FINGERUP:
+                AT_HandleTouch(&sdlevent);
                 break;
 
             case SDL_QUIT:
@@ -1725,6 +1732,7 @@ void I_GetScreenDimensions (void)
 	int w = 16, h = 10;
 	int ah;
 
+	AT_AutoPickRenderScale();
 	SCREENWIDTH = ORIGWIDTH << crispy->hires;
 	SCREENHEIGHT = ORIGHEIGHT << crispy->hires;
 

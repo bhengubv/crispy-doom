@@ -414,7 +414,7 @@ void M_CrispyToggleFullsounds(int choice)
 
 static void M_CrispyToggleHiresHook (void)
 {
-    crispy->hires = !crispy->hires;
+    crispy->hires = (crispy->hires + 1) % 3;
 
     // [crispy] re-initialize framebuffers, textures and renderer
     I_ReInitGraphics(REINIT_FRAMEBUFFERS | REINIT_TEXTURES | REINIT_ASPECTRATIO);
