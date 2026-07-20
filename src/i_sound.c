@@ -46,7 +46,17 @@ int snd_cachesize = 64 * 1024 * 1024;
 // Config variable that controls the sound buffer size.
 // We default to 28ms (1000 / 35fps = 1 buffer per tic).
 
+#ifdef __ANDROID__
+// [circle] Android's OpenSL ES buffer queue starves at the stock 28ms slice
+// (1024 samples at 44100Hz). Measured on a Helio G85: the player flaps
+// stopped/started every 15-50ms with OPL music, ~250ms with music off, and
+// 46ms (2048) still starves. 93ms (4096) runs clean for 95s+ with music on.
+// The added latency is not perceptible in DOOM, and the phone cannot feed a
+// tighter deadline while the software renderer is already CPU-bound.
+int snd_maxslicetime_ms = 93;
+#else
 int snd_maxslicetime_ms = 28;
+#endif
 
 // External command to invoke to play back music.
 
