@@ -52,12 +52,18 @@ extern boolean menuactive;
 #define SHOULDER_LX  0.060f
 #define SHOULDER_RX  0.940f
 
-#define PILL_Y       0.078f
 #define PILL_HH      0.042f
 #define PILL_TEXT_H  0.036f
 #define PILL_PAD     0.026f
-#define SELECT_X     0.440f
-#define START_X      0.560f
+
+// START and SELECT belong below the face buttons on the right, as on the
+// hardware -- not floating at top centre, which is where they went when the
+// face cluster still hung too low to leave room under it. Raising the cluster
+// to CLUSTER_Y opened the gap between the X button and SAFE_BOTTOM, so they
+// can now sit where they should and still clear the status bar.
+#define MENU_Y       0.745f
+#define SELECT_X     0.824f
+#define START_X      0.931f
 
 // The D-pad and the face diamond share CLUSTER_Y because on the hardware they
 // are level, mirrored across the centre line. That relationship is most of what
@@ -114,11 +120,19 @@ extern boolean menuactive;
 _Static_assert(DPAD_CY + DPAD_ARM * TOUCH_SLOP <
                NUB_CY - NUB_TRACK * TOUCH_SLOP,
                "D-pad and nub touch targets overlap");
-_Static_assert(PILL_Y + PILL_HH * TOUCH_SLOP <
+// It is the L shoulder that sits above the D-pad, not START/SELECT -- an
+// earlier version of this assert checked the wrong pair and so proved nothing
+// about the left column.
+_Static_assert(SHOULDER_Y + SHOULDER_HH * TOUCH_SLOP <
                DPAD_CY - DPAD_ARM * TOUCH_SLOP,
-               "top pills and D-pad touch targets overlap");
+               "L shoulder and D-pad touch targets overlap");
+_Static_assert(FACE_CY + FACE_OFF + FACE_R_MID * TOUCH_SLOP <
+               MENU_Y - PILL_HH * TOUCH_SLOP,
+               "face cluster and START/SELECT touch targets overlap");
 _Static_assert(NUB_CY + NUB_TRACK <= SAFE_BOTTOM,
                "nub runs into the status bar");
+_Static_assert(MENU_Y + PILL_HH <= SAFE_BOTTOM,
+               "START/SELECT run into the status bar");
 
 // --- palette. STEEL and ACCENT are the Arcade's. The four face symbols use the
 // --- authentic PlayStation colours; the user signed that off specifically,
@@ -297,11 +311,11 @@ static void Layout(void)
     btn[B_R].cx = SHOULDER_RX;  btn[B_R].cy = SHOULDER_Y;
     btn[B_R].r  = SHOULDER_HH;  btn[B_R].hw = SHOULDER_HW;  btn[B_R].pill = true;
 
-    btn[B_SELECT].cx = SELECT_X;  btn[B_SELECT].cy = PILL_Y;
+    btn[B_SELECT].cx = SELECT_X;  btn[B_SELECT].cy = MENU_Y;
     btn[B_SELECT].r  = PILL_HH;   btn[B_SELECT].pill = true;
     btn[B_SELECT].hw = LabelHalfWidth(LBL_SELECT);
 
-    btn[B_START].cx = START_X;    btn[B_START].cy = PILL_Y;
+    btn[B_START].cx = START_X;    btn[B_START].cy = MENU_Y;
     btn[B_START].r  = PILL_HH;    btn[B_START].pill = true;
     btn[B_START].hw = LabelHalfWidth(LBL_START);
 }
