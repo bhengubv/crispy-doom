@@ -27,6 +27,7 @@
 #include "i_swap.h"
 #include "z_zone.h"
 #include "v_video.h"
+#include "android_text.h"
 #include "w_wad.h"
 #include "s_sound.h"
 
@@ -341,6 +342,8 @@ void F_TextWrite (void)
 	{
 	    break;
 	}
+	// [circle] native-resolution glyph, falling back if we have none
+	if (!AX_Glyph(cx, cy, w, SHORT(hu_font[c]->height), ch[-1], dp_translation))
 	V_DrawPatch(cx, cy, hu_font[c]);
 	cx+=w;
     }
@@ -812,6 +815,8 @@ void F_CastPrint (const char *text)
 	}
 		
 	w = SHORT (hu_font[c]->width);
+	// [circle] native-resolution glyph, falling back if we have none
+	if (!AX_Glyph(cx, 180, w, SHORT(hu_font[c]->height), ch[-1], dp_translation))
 	V_DrawPatch(cx, 180, hu_font[c]);
 	cx+=w;
     }

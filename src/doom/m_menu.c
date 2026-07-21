@@ -62,6 +62,7 @@
 #include "sounds.h"
 
 #include "m_menu.h"
+#include "android_text.h"
 #include "m_crispy.h" // [crispy] Crispness menu
 
 #include "v_trans.h" // [crispy] colored "invert mouse" message
@@ -288,6 +289,51 @@ enum
     main_end
 } main_e;
 
+// [circle] The main and episode menus name graphic lumps and carry no alttext,
+// so the words their art depicts are supplied here. Every other menu -- skill
+// included -- already has alttext and needs no entry. Words are preferred to
+// the lumps because they go through the native-resolution text layer; see
+// src/android_text.c for why the art cannot simply be scaled up instead.
+
+// [circle] Screen headings, as words rather than the 320x200 title lumps, so
+// they go through the native-resolution text layer with everything else. Centred
+// on the screen instead of at the lump's hand-tuned x, since the text it draws
+// is a different width to the art it replaces.
+
+static void M_DrawTitle (int y, const char *text)
+{
+    M_WriteText(ORIGWIDTH/2 - M_StringWidth(text)/2, y, text);
+}
+
+static const char *M_LumpText (const char *name)
+{
+    static const struct { const char *lump, *text; } names[] = {
+        { "M_NGAME",  "New Game" },
+        { "M_OPTION", "Options" },
+        { "M_LOADG",  "Load Game" },
+        { "M_SAVEG",  "Save Game" },
+        { "M_RDTHIS", "Read This!" },
+        { "M_QUITG",  "Quit Game" },
+        { "M_EPI1",   "Knee-Deep in the Dead" },
+        { "M_EPI2",   "The Shores of Hell" },
+        { "M_EPI3",   "Inferno" },
+        { "M_EPI4",   "Thy Flesh Consumed" },
+        { "M_EPI5",   "Sigil" },
+        { "M_EPI6",   "Sigil II" },
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+    {
+        if (!strcmp(name, names[i].lump))
+        {
+            return names[i].text;
+        }
+    }
+
+    return NULL;
+}
+
 menuitem_t MainMenu[]=
 {
     {1,"M_NGAME",M_NewGame,'n'},
@@ -370,7 +416,7 @@ enum
 menuitem_t NewGameMenu[]=
 {
     {1,"M_JKILL",	M_ChooseSkill, 'i', "I'm too young to die."},
-    {1,"M_ROUGH",	M_ChooseSkill, 'h', "Hey, not too rough!."},
+    {1,"M_ROUGH",	M_ChooseSkill, 'h', "Hey, not too rough!"},
     {1,"M_HURT",	M_ChooseSkill, 'h', "Hurt me plenty."},
     {1,"M_ULTRA",	M_ChooseSkill, 'u', "Ultra-Violence."},
     {1,"M_NMARE",	M_ChooseSkill, 'n', "Nightmare!"}
@@ -902,8 +948,7 @@ void M_DrawLoad(void)
 {
     int             i;
 	
-    V_DrawPatchDirect(LoadDef_x, LoadDef_y,
-                      W_CacheLumpName(DEH_String("M_LOADG"), PU_CACHE));
+    M_DrawTitle(LoadDef_y, "Load Game");
 
     for (i = 0;i < load_end; i++)
     {
@@ -983,7 +1028,7 @@ void M_DrawSave(void)
 {
     int             i;
 	
-    V_DrawPatchDirect(SaveDef_x, SaveDef_y, W_CacheLumpName(DEH_String("M_SAVEG"), PU_CACHE));
+    M_DrawTitle(SaveDef_y, "Save Game");
     for (i = 0;i < load_end; i++)
     {
 	M_DrawSaveLoadBorder(LoadDef.x,LoadDef.y+LINEHEIGHT*i);
@@ -1232,7 +1277,7 @@ void M_DrawReadThisCommercial(void)
 //
 void M_DrawSound(void)
 {
-    V_DrawPatchDirect (60, 38, W_CacheLumpName(DEH_String("M_SVOL"), PU_CACHE));
+    M_DrawTitle(38, "Sound Volume");
 
     M_DrawThermo(SoundDef.x,SoundDef.y+LINEHEIGHT*(sfx_vol+1),
 		 16,sfxVolume);
@@ -1306,8 +1351,8 @@ void M_DrawNewGame(void)
     // [crispy] force status bar refresh
     inhelpscreens = true;
 
-    V_DrawPatchDirect(96, 14, W_CacheLumpName(DEH_String("M_NEWG"), PU_CACHE));
-    V_DrawPatchDirect(54, 38, W_CacheLumpName(DEH_String("M_SKILL"), PU_CACHE));
+    M_DrawTitle(14, "New Game");
+    M_DrawTitle(38, "Choose Skill Level");
 }
 
 void M_NewGame(int choice)
@@ -1344,7 +1389,7 @@ void M_DrawEpisode(void)
     inhelpscreens = true;
 
     if (W_CheckNumForName(DEH_String("M_EPISOD")) != -1)
-    V_DrawPatchDirect(54, 38, W_CacheLumpName(DEH_String("M_EPISOD"), PU_CACHE));
+    M_DrawTitle(38, "Which Episode?");
     else
     {
       M_WriteText(54, 38, "Which Episode?");
@@ -1401,31 +1446,18 @@ static const char *msgNames[2] = {"M_MSGOFF","M_MSGON"};
 
 void M_DrawOptions(void)
 {
-    V_DrawPatchDirect(108, 15, W_CacheLumpName(DEH_String("M_OPTTTL"),
-                                               PU_CACHE));
+    M_DrawTitle(15, "Options");
 	
-    if (OptionsDef.lumps_missing == -1)
-    {
-    V_DrawPatchDirect(OptionsDef.x + 175, OptionsDef.y + LINEHEIGHT * detail,
-		      W_CacheLumpName(DEH_String(detailNames[detailLevel]),
-			              PU_CACHE));
-    }
-    else
-    if (OptionsDef.lumps_missing > 0)
+    // [circle] Always take the words. The On/Off and High/Low lumps are
+    // art, and magnify into the same red smear as everything else did.
     {
     M_WriteText(OptionsDef.x + M_StringWidth("Graphic Detail: "),
                 OptionsDef.y + LINEHEIGHT * detail + 8 - (M_StringHeight("HighLow")/2),
                 detailLevel ? "Low" : "High");
     }
 
-    if (OptionsDef.lumps_missing == -1)
-    {
-    V_DrawPatchDirect(OptionsDef.x + 120, OptionsDef.y + LINEHEIGHT * messages,
-                      W_CacheLumpName(DEH_String(msgNames[showMessages]),
-                                      PU_CACHE));
-    }
-    else
-    if (OptionsDef.lumps_missing > 0)
+    // [circle] Always take the words. The On/Off and High/Low lumps are
+    // art, and magnify into the same red smear as everything else did.
     {
     M_WriteText(OptionsDef.x + M_StringWidth("Messages: "),
                 OptionsDef.y + LINEHEIGHT * messages + 8 - (M_StringHeight("OnOff")/2),
@@ -1447,7 +1479,7 @@ static void M_DrawMouse(void)
 {
     char mouse_menu_text[48];
 
-    V_DrawPatchDirect (60, LoadDef_y, W_CacheLumpName(DEH_String("M_MSENS"), PU_CACHE));
+    M_DrawTitle(LoadDef_y, "Mouse Sensitivity");
 
     M_WriteText(MouseDef.x, MouseDef.y + LINEHEIGHT * mouse_horiz + 6,
                 "HORIZONTAL: TURN");
@@ -2005,15 +2037,26 @@ M_DrawThermo
         dp_translation = cr[CR_DARK];
     }
 
+    // [circle] Native slider. The M_THERM* lumps are 320x200 art, and at phone
+    // scale the bar reads as a red smear with no visible position. AX_Thermo
+    // draws the same control at panel resolution; the patches stay as fallback.
+    const boolean native = AX_Thermo(x, y, 8 + thermWidth * 8 + 8, 13,
+                                     thermWidth > 1
+                                     ? (float) thermDot / (float)(thermWidth - 1)
+                                     : 0.0f);
+
     xx = x;
-    V_DrawPatchDirect(xx, y, W_CacheLumpName(DEH_String("M_THERML"), PU_CACHE));
+    if (!native)
+	V_DrawPatchDirect(xx, y, W_CacheLumpName(DEH_String("M_THERML"), PU_CACHE));
     xx += 8;
     for (i=0;i<thermWidth;i++)
     {
+if (!native)
 	V_DrawPatchDirect(xx, y, W_CacheLumpName(DEH_String("M_THERMM"), PU_CACHE));
 	xx += 8;
     }
-    V_DrawPatchDirect(xx, y, W_CacheLumpName(DEH_String("M_THERMR"), PU_CACHE));
+    if (!native)
+	V_DrawPatchDirect(xx, y, W_CacheLumpName(DEH_String("M_THERMR"), PU_CACHE));
 
     M_snprintf(num, 4, "%3d", thermDot);
     M_WriteText(xx + 8, y + 3, num);
@@ -2025,6 +2068,7 @@ M_DrawThermo
         dp_translation = cr[CR_DARK];
     }
 
+    if (!native)
     V_DrawPatchDirect((x + 8) + thermDot * 8, y,
 		      W_CacheLumpName(DEH_String("M_THERMO"), PU_CACHE));
 
@@ -2146,6 +2190,7 @@ M_WriteText
 	    }
 	}
 		
+	const char orig = (char) c; // [circle] keep the case the caller wrote
 	c = toupper(c) - HU_FONTSTART;
 	if (c < 0 || c>= HU_FONTSIZE)
 	{
@@ -2156,6 +2201,9 @@ M_WriteText
 	w = SHORT (hu_font[c]->width);
 	if (cx+w > ORIGWIDTH)
 	    break;
+	// [circle] Hand the glyph to the native-resolution layer, which draws it
+	// after the frame is scaled. Same cell, same metrics, just not magnified.
+	if (!AX_Glyph(cx, cy, w, SHORT(hu_font[c]->height), orig, dp_translation))
 	V_DrawPatchDirect(cx, cy, hu_font[c]);
 	cx+=w;
     }
@@ -3243,7 +3291,13 @@ void M_Drawer (void)
 
 	if (name[0] && (W_CheckNumForName(name) > 0 || alttext))
 	{
-	    if (W_CheckNumForName(name) > 0 && currentMenu->lumps_missing == -1)
+	    // [circle] Prefer words to the menu art: the lumps are 320x200 graphics
+	    // magnified ~5x on a phone panel, while text is drawn at native
+	    // resolution. Falls through to the art if we have no words for it.
+	    if (!alttext)
+		alttext = M_LumpText(name);
+
+	    if (!alttext && W_CheckNumForName(name) > 0 && currentMenu->lumps_missing == -1)
 	    V_DrawPatchDirect (x, y, W_CacheLumpName(name, PU_CACHE));
 	    else if (alttext)
 		M_WriteText(x, y+8-(M_StringHeight(alttext)/2), alttext);
@@ -3261,9 +3315,16 @@ void M_Drawer (void)
 	dp_translation = NULL;
     }
     else
-    V_DrawPatchDirect(x + SKULLXOFF, currentMenu->y - 5 + itemOn*LINEHEIGHT,
-		      W_CacheLumpName(DEH_String(skullName[whichSkull]),
-				      PU_CACHE));
+    {
+	// [circle] The skull is a 320x200 sprite and reads as a smear once
+	// magnified. crispy already draws a text caret for its own menus, so use
+	// that everywhere -- sharp, and one cursor across the whole game.
+	char cursor[4];
+	M_snprintf(cursor, sizeof(cursor), "%s>",
+		   whichSkull ? crstr[CR_NONE] : crstr[CR_DARK]);
+	M_WriteText(x - 12, currentMenu->y + itemOn*LINEHEIGHT + 4, cursor);
+	dp_translation = NULL;
+    }
 }
 
 

@@ -23,6 +23,7 @@
 #include "doomstat.h"
 
 #include "v_video.h"
+#include "android_text.h"
 #include "i_swap.h"
 
 #include "hu_lib.h"
@@ -140,6 +141,9 @@ HUlib_drawTextLine
 	    w = SHORT(l->f[c - l->sc]->width);
 	    if (x+w > ORIGWIDTH + WIDESCREENDELTA)
 		break;
+	    // [circle] native-resolution glyph, falling back if we have none for it
+	    if (!AX_Glyph(x, y, w, SHORT(l->f[c - l->sc]->height), l->l[i],
+			  dp_translation))
 	    V_DrawPatchDirect(x, y, l->f[c - l->sc]);
 	    x += w;
 	}

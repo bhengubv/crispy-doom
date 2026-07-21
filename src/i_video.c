@@ -43,6 +43,7 @@
 #include "i_video.h"
 #include "android_touch.h"
 #include "android_shader.h"
+#include "android_text.h"
 #include "m_argv.h"
 #include "m_config.h"
 #include "m_misc.h"
@@ -948,6 +949,10 @@ void I_FinishUpdate (void)
 
     // [circle] Ghost controls, drawn over the finished frame at native
     // panel resolution so they stay crisp and edge-to-edge play is kept.
+    // [circle] All of the game's text, redrawn at panel resolution over the
+    // scaled frame, and under the controls so the pad stays reachable.
+    AX_Draw(renderer);
+
     AT_DrawGhost(renderer);
 
     // Draw!
