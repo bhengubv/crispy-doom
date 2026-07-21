@@ -1548,6 +1548,19 @@ static void SetVideoMode(void)
     // "window_flags" contains the fullscreen flag (see above), then
     // w and h are ignored.
 
+    // [circle] Declare the game's orientation before the window exists.
+    //
+    // crispy always sets SDL_WINDOW_RESIZABLE, and SDL's Android backend reads
+    // that as "resizable" and, with no orientation hint, requests
+    // SCREEN_ORIENTATION_FULL_USER -- i.e. it hands the decision to the phone
+    // and overrides whatever the manifest asked for. DOOM then follows however
+    // the handset happens to be held, which is how it ends up portrait.
+    //
+    // This is a landscape game, so it says so itself rather than relying on the
+    // manifest winning a race or on per-app state the OS may reset. The hint has
+    // to be set before SDL_CreateWindow, because that is when SDL decides.
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+
     if (screen == NULL)
     {
         screen = SDL_CreateWindow(NULL, x, y, w, h, window_flags);
