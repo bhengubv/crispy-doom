@@ -1780,12 +1780,17 @@ void I_GetScreenDimensions (void)
 
 	if (SDL_GetCurrentDisplayMode(video_display, &mode) == 0)
 	{
-		// [crispy] sanity check: really widescreen display?
-		if (mode.w * ah >= mode.h * SCREENWIDTH)
-		{
-			w = mode.w;
-			h = mode.h;
-		}
+		// [circle] This is a landscape game. Take the panel's long edge as the
+		// width and its short edge as the height, because that is the frame we
+		// present in, whatever shape SDL happens to report the display as.
+		//
+		// Upstream instead asks "is this display really widescreen?" and, when
+		// the answer is no, silently keeps the 16:10 default -- a 768-wide
+		// buffer. The drawn frame is then wider than the buffer and the renderer
+		// runs off the end of it (R_DrawColumn: ... at 768). There is no reason
+		// for a landscape-only game to have an opinion about narrow displays.
+		w = (mode.w > mode.h) ? mode.w : mode.h;
+		h = (mode.w > mode.h) ? mode.h : mode.w;
 	}
 
 	// [crispy] widescreen rendering makes no sense without aspect ratio correction
