@@ -38,6 +38,7 @@
 #include "tables.h"
 
 #include "p_bot.h"
+#include "p_botnav.h"
 
 int botcount = 0;
 
@@ -50,6 +51,12 @@ int botcount = 0;
 #define BOT_RETARGET    10          // tics between target searches
 #define BOT_STUCK       8           // tics of no progress before we give up
 
+#define BOT_MAXPATH     48          // nodes; a route longer than this re-plans
+#define BOT_REPATH      70          // tics between route reconsiderations
+#define BOT_STALE       (35 * 20)   // a room nobody has entered for this long
+                                    // is worth going to look at again
+#define BOT_LEASH       (640 * FRACUNIT)    // how far the human may wander off
+
 typedef struct
 {
     boolean   active;
@@ -61,6 +68,14 @@ typedef struct
     int       strafe;
     int       clock;
     unsigned  rng;
+
+    // Where it is going when there is nothing in front of it to shoot.
+    int       path[BOT_MAXPATH];
+    int       pathlen;
+    int       pathpos;
+    int       repath;
+    fixed_t   seenx, seeny;     // where a target was when we lost it
+    boolean   hasseen;
 } bot_t;
 
 static bot_t bots[MAXPLAYERS];
@@ -102,6 +117,11 @@ static void BotClaim(int i)
 void P_BotInit(void)
 {
     int i;
+
+    // The level about to load is a different map to the one the graph was read
+    // from. It notices that by itself, but saying so here keeps the stale
+    // pointer from ever being reachable.
+    BN_Invalidate();
 
     for (i = 0; i < MAXPLAYERS; i++)
     {
@@ -245,6 +265,95 @@ static boolean BotClearAhead(mobj_t *mo, angle_t ang)
 }
 
 // ---------------------------------------------------------------------------
+// navigation
+// ---------------------------------------------------------------------------
+
+// Decides where the bot is trying to get to, and asks the graph for the way.
+// The order matters more than any of the individual choices: chase down what
+// you were just fighting, otherwise stay with the human, otherwise go and look
+// somewhere nobody has been. A bot that only ever explored would abandon you
+// mid-fight; one that only ever followed would never fetch anything.
+static void BotRepath(bot_t *b, mobj_t *mo, int here)
+{
+    int goal = BN_NOWHERE;
+
+    b->repath = BOT_REPATH;
+    b->pathpos = 0;
+    b->pathlen = 0;
+
+    if (b->hasseen)
+    {
+        goal = BN_NodeAt(b->seenx, b->seeny);
+
+        if (goal == here || goal == BN_NOWHERE)
+        {
+            b->hasseen = false;     // arrived, and it was not there
+            goal = BN_NOWHERE;
+        }
+    }
+
+    if (goal == BN_NOWHERE && !deathmatch && playeringame[consoleplayer])
+    {
+        const mobj_t *lead = players[consoleplayer].mo;
+
+        if (lead != NULL && players[consoleplayer].playerstate == PST_LIVE
+         && P_AproxDistance(lead->x - mo->x, lead->y - mo->y) > BOT_LEASH)
+        {
+            goal = BN_NodeAt(lead->x, lead->y);
+        }
+    }
+
+    if (goal != BN_NOWHERE && goal != here)
+    {
+        b->pathlen = BN_Path(here, goal, b->path, BOT_MAXPATH);
+    }
+
+    if (b->pathlen == 0)
+    {
+        b->pathlen = BN_PathToStale(here, b->path, BOT_MAXPATH,
+                                    leveltime, BOT_STALE);
+    }
+}
+
+// Returns the direction to walk. Following a route is only ever "aim at the
+// next doorway", because a subsector is convex: there is nothing inside one to
+// walk around.
+static angle_t BotNavigate(bot_t *b, mobj_t *mo)
+{
+    int     here = BN_NodeAt(mo->x, mo->y);
+    fixed_t px, py;
+
+    if (here == BN_NOWHERE)
+    {
+        return b->wander;   // no graph; fall through to feeling for walls
+    }
+
+    BN_Visit(here, leveltime);
+
+    // Drop the nodes we have already walked into.
+    while (b->pathpos < b->pathlen && b->path[b->pathpos] == here)
+    {
+        b->pathpos++;
+    }
+
+    if (b->pathpos >= b->pathlen || --b->repath <= 0)
+    {
+        BotRepath(b, mo, here);
+    }
+
+    if (b->pathpos < b->pathlen
+     && BN_PortalPoint(here, b->path[b->pathpos], &px, &py))
+    {
+        return R_PointToAngle2(mo->x, mo->y, px, py);
+    }
+
+    // Off the route -- knocked back, fell, or the door shut behind us. Plan
+    // again from wherever we actually are.
+    b->repath = 0;
+    return b->wander;
+}
+
+// ---------------------------------------------------------------------------
 // weapons
 // ---------------------------------------------------------------------------
 
@@ -317,6 +426,16 @@ void P_BotTiccmd(int playernum, ticcmd_t *cmd)
     if (b->target != NULL
      && (!BotWorthShooting(b->target, p) || !P_CheckSight(mo, b->target)))
     {
+        // Remember where it went. Losing sight of something is the main reason
+        // a bot needs to navigate at all -- without this it forgets the fight
+        // the instant the enemy steps behind a pillar.
+        if (b->target->health > 0)
+        {
+            b->seenx = b->target->x;
+            b->seeny = b->target->y;
+            b->hasseen = true;
+        }
+
         b->target = NULL;
     }
 
@@ -338,17 +457,20 @@ void P_BotTiccmd(int playernum, ticcmd_t *cmd)
     }
     else
     {
-        // Nothing in sight. Keep walking the way we were, turning when the way
-        // ahead runs out, so the bot explores instead of pacing on the spot.
+        // Nothing in sight, so go somewhere. The graph decides where; feeling
+        // along the wall is only what happens when it has no answer.
         if (b->wander == 0 && b->clock < 2)
         {
             b->wander = mo->angle;
         }
-        if (!BotClearAhead(mo, b->wander))
+
+        want = BotNavigate(b, mo);
+
+        if (want == b->wander && !BotClearAhead(mo, b->wander))
         {
             b->wander += (BotRandom(b) & 1) ? ANG45 : (angle_t) -ANG45;
+            want = b->wander;
         }
-        want = b->wander;
     }
 
     // --- face it ------------------------------------------------------------
