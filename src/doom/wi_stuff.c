@@ -46,6 +46,8 @@
 
 #include "st_stuff.h" // [crispy] ST_DrawDemoTimer()
 #include "wi_stuff.h"
+#include "m_menu.h"
+#include "p_botrec.h"
 
 #include "d_pwad.h" // [crispy] kex secret level
 
@@ -1975,6 +1977,22 @@ void WI_Drawer (void)
 	    WI_drawNetgameStats();
 	else
 	    WI_drawStats();
+
+	    // [circle] The ladder line. This screen is where you look after
+	    // finishing, so it is where the rung belongs.
+	    {
+		char buf[80], what[48];
+		int  best = BR_Best();
+
+		if (best != BR_UNCLEARED)
+		{
+		    M_snprintf(buf, sizeof(buf), "%s%s",
+			       BR_Improved() ? "New best: " : "Best: ",
+			       BR_Describe(best, what, sizeof(what)));
+		    M_WriteText(ORIGWIDTH/2 - M_StringWidth(buf)/2,
+				ORIGHEIGHT - 14, buf);
+		}
+	    }
 	break;
 	
       case ShowNextLoc:

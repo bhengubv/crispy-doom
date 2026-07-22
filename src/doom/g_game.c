@@ -77,6 +77,7 @@
 
 #include "g_game.h"
 #include "p_bot.h"
+#include "p_botrec.h"
 #include "v_trans.h" // [crispy] colored "always run" message
 
 #include "deh_main.h" // [crispy] for demo footer
@@ -1146,7 +1147,13 @@ void G_DoLoadLevel (void)
     // into whichever slots it finds occupied.
     P_BotInit();
 
-    P_SetupLevel (gameepisode, gamemap, 0, gameskill);    
+    P_SetupLevel (gameepisode, gamemap, 0, gameskill);
+
+    // [circle] Say which rung this map is sitting on. The dial is only a
+    // setting until you can see what you are trying to beat.
+    if (!demoplayback && !netgame)
+	players[consoleplayer].message = BR_StatusLine();
+    
     displayplayer = consoleplayer;		// view the guy you are playing    
     gameaction = ga_nothing; 
     Z_CheckHeap ();
@@ -2134,6 +2141,11 @@ static void G_WriteLevelStat(void)
 void G_DoCompleted (void) 
 { 
     int             i; 
+
+    // [circle] Finishing the level is what earns a rung on the ladder, so
+    // record it here -- before the level number is advanced out from under
+    // us, and only on a real completion rather than a death or a warp.
+    BR_Record();
 
     // [crispy] Write level statistics upon exit
     if (M_ParmExists("-levelstat"))

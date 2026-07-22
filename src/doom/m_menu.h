@@ -54,6 +54,11 @@ void M_StartControlPanel (void);
 // [crispy] Propagate default difficulty setting change
 void M_SetDefaultDifficulty (void);
 
+// [circle] un-static, so the intermission can draw text through the same
+// path the menus use -- which is the one the native-resolution layer sees.
+void M_WriteText(int x, int y, const char *string);
+int  M_StringWidth(const char *string);
+
 extern int detailLevel;
 extern int screenblocks;
 
