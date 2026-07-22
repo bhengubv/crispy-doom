@@ -1458,6 +1458,9 @@ void G_Ticker (void)
     int		buf; 
     ticcmd_t*	cmd;
     
+    // [circle] Point the camera before anything moves this tic.
+    P_BotSpectate();
+
     // do player reborns if needed
     for (i=0 ; i<MAXPLAYERS ; i++) 
 	if (playeringame[i] && players[i].playerstate == PST_REBORN) 

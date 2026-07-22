@@ -34,7 +34,9 @@
 #include "d_event.h"
 #include "d_player.h"
 #include "info.h"
+#include "m_misc.h"
 #include "p_local.h"
+#include "s_sound.h"
 #include "tables.h"
 
 #include "p_bot.h"
@@ -196,6 +198,110 @@ void P_BotSetBalance(int n)
                 P_DamageMobj(players[i].mo, NULL, NULL, 10000);
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// spectating
+// ---------------------------------------------------------------------------
+//
+// Watching costs nothing that playing does. Every limit on AI here is really a
+// latency limit -- a marine that takes 400ms to decide ruins a game and is fine
+// in a broadcast -- so this is the one place the hardware is not the ceiling.
+// It is also the honest way to see whether the bots are any good.
+//
+// The work is not the camera, which DOOM already has in displayplayer. It is
+// knowing where to point it.
+
+boolean botspectate = false;
+
+#define SPEC_HOLD  (35 * 2)     // shortest time on one marine
+#define SPEC_BORED (35 * 7)     // longest, when nothing is happening
+
+static int spec_cam = -1;
+static int spec_tics;
+
+static boolean SpecWatchable(int i)
+{
+    return P_BotInGame(i) && players[i].playerstate == PST_LIVE
+        && players[i].mo != NULL;
+}
+
+static int SpecNext(int from)
+{
+    int i, n;
+
+    for (i = 1; i <= MAXPLAYERS; i++)
+    {
+        n = (from + i) % MAXPLAYERS;
+
+        if (SpecWatchable(n))
+        {
+            return n;
+        }
+    }
+
+    return -1;
+}
+
+void P_BotSpectate(void)
+{
+    int i, fighting = -1;
+
+    if (!botspectate || gamestate != GS_LEVEL)
+    {
+        return;
+    }
+
+    // The human keeps their slot -- too much of the game assumes consoleplayer
+    // is in it -- but stops being part of the fight. Monsters look past them
+    // and nothing can kill them, so the match is not really about them.
+    players[consoleplayer].cheats |= CF_GODMODE | CF_NOTARGET;
+
+    spec_tics++;
+
+    for (i = 0; i < MAXPLAYERS; i++)
+    {
+        if (SpecWatchable(i) && bots[i].target != NULL && fighting < 0)
+        {
+            fighting = i;
+        }
+    }
+
+    // Cutting on every change of who is shooting makes it unwatchable, so hold
+    // the shot: cut immediately only if this marine has died, cut to a fight
+    // once the minimum has elapsed, and otherwise move on when bored.
+    if (!SpecWatchable(spec_cam))
+    {
+        spec_cam = fighting >= 0 ? fighting : SpecNext(spec_cam);
+        spec_tics = 0;
+    }
+    else if (spec_tics > SPEC_HOLD && bots[spec_cam].target == NULL
+          && fighting >= 0)
+    {
+        spec_cam = fighting;
+        spec_tics = 0;
+    }
+    else if (spec_tics > SPEC_BORED)
+    {
+        int next = SpecNext(spec_cam);
+
+        if (next >= 0)
+        {
+            spec_cam = next;
+        }
+        spec_tics = 0;
+    }
+
+    if (spec_cam >= 0 && spec_cam != displayplayer)
+    {
+        static char msg[32];
+
+        displayplayer = spec_cam;
+        S_UpdateSounds(players[displayplayer].mo);
+
+        M_snprintf(msg, sizeof(msg), "Watching marine %d", displayplayer + 1);
+        players[consoleplayer].message = msg;
     }
 }
 

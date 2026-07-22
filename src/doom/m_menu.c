@@ -1367,6 +1367,8 @@ void M_DrawNewGame(void)
 
 void M_NewGame(int choice)
 {
+    botspectate = false;
+
     // [crispy] forbid New Game while recording a demo
     if (demorecording)
     {
@@ -1879,13 +1881,28 @@ enum
 {
     multi_host,
     multi_join,
+    multi_spectate,
     multi_end
 } multi_e;
+
+static void M_SpectateBots(int choice)
+{
+    choice = 0;
+    M_ClearMenus();
+
+    // Fill every spare slot: three marines is a match worth watching, and the
+    // human is about to stop being one of them.
+    botspectate = true;
+    P_BotSetBalance(-BOT_MAXBALANCE);
+
+    G_DeferedInitNew(startskill, startepisode, startmap);
+}
 
 static menuitem_t MultiMenu[]=
 {
     {1,"M_MHOST",	M_HostGame,'h', "Host a Game"},
-    {1,"M_MJOIN",	M_JoinGame,'j', "Join a Game"}
+    {1,"M_MJOIN",	M_JoinGame,'j', "Join a Game"},
+    {1,"M_MSPEC",	M_SpectateBots,'s', "Watch the Bots"}
 };
 
 static menu_t MultiDef =

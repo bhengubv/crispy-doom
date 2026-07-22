@@ -30,6 +30,13 @@ void P_BotSetBalance(int n);
 // True while the bots are hunting the human rather than helping.
 boolean P_BotHostile(void);
 
+// Watch the marines play instead of playing. The human stays in their slot but
+// stops mattering: untargetable, unkillable, and not the view.
+extern boolean botspectate;
+
+// Picks whose eyes to watch through. Call once per tic.
+void P_BotSpectate(void);
+
 boolean P_BotInGame(int playernum);
 
 // Fills in the slot's command for this tic, in place of the network's.
