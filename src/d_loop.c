@@ -302,6 +302,40 @@ void D_ReceiveTic(ticcmd_t *ticcmds, boolean *players_mask)
 // Called after the screen is set but before the game starts running.
 //
 
+// [circle] Bringing a netgame up after the game has been running leaves the
+// loop's counters miles ahead of the server's, which starts its tic sequence
+// at zero. TryRunTics then sees lowtic behind gametic and dies with
+// "lowtic < gametic" -- which is exactly what the phones did. The startup path
+// never has to think about this because nothing has run yet.
+//
+// So put the loop back where a fresh process would have been. Everything here
+// is counters and the tic ring buffer; no game state is touched.
+
+void D_ResetLoop(void)
+{
+    gametic = 0;
+    maketic = 0;
+    recvtic = 0;
+    offsetms = 0;
+
+    // Clear the tic ring, but seed each entry's player set from the one just
+    // negotiated. Leaving it zeroed says "nobody is in the game", and RunTic
+    // reasonably concludes every player quit -- on a player who has no body
+    // yet, because the level has not loaded.
+    {
+        int i;
+
+        for (i = 0; i < BACKUPTICS; i++)
+        {
+            memset(&ticdata[i], 0, sizeof(ticdata[i]));
+            memcpy(ticdata[i].ingame, local_playeringame,
+                   sizeof(ticdata[i].ingame));
+        }
+    }
+
+    D_StartGameLoop();
+}
+
 void D_StartGameLoop(void)
 {
     lasttime = GetAdjustedTime() / ticdup;

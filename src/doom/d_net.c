@@ -36,6 +36,14 @@
 #include "deh_main.h"
 
 #include "d_loop.h"
+#include "g_game.h"
+#include "net_client.h"
+#include "net_gui.h"
+#include "net_io.h"
+#include "net_loop.h"
+#include "net_query.h"
+#include "net_sdl.h"
+#include "net_server.h"
 
 ticcmd_t *netcmds;
 
@@ -81,7 +89,10 @@ static void RunTic(ticcmd_t *cmds, boolean *ingame)
         // about, so the single-player path reports it as not in the game on
         // every tic. Without this exemption the bot is quit out one tic after
         // it spawns -- which is exactly what it did.
-        if (!demoplayback && playeringame[i] && !ingame[i] && !P_BotInGame(i))
+        // A quit for a player who never got a body is nothing to clean up, and
+        // PlayerQuitGame assumes there is one.
+        if (!demoplayback && playeringame[i] && !ingame[i]
+         && players[i].mo != NULL && !P_BotInGame(i))
         {
             PlayerQuitGame(&players[i]);
         }
@@ -250,6 +261,93 @@ void D_ConnectNetGame(void)
 // D_CheckNetGame
 // Works out player numbers among the net participants
 //
+
+// [circle] --- starting a netgame after the game is already running ---------
+//
+// Vanilla decides netgame-or-not at startup, in D_InitNetGame, from the command
+// line -- long before a menu exists. A phone has no command line, so there is
+// no reachable path to a netgame at all. These run the same sequence on demand:
+// bring a server up (or go and find one), connect, wait for the launch, then
+// negotiate settings exactly as D_CheckNetGame does at boot, and start the map
+// everyone agreed on.
+//
+// Deliberately no lobby. Two players is the game, so the host launches the
+// moment somebody arrives; a phone has nowhere good to put a player list and
+// nobody wants to read one while holding the thing sideways.
+
+static boolean D_NetStart(net_addr_t *addr)
+{
+    net_connect_data_t connect_data;
+    net_gamesettings_t settings;
+
+    if (addr == NULL)
+    {
+        return false;
+    }
+
+    InitConnectData(&connect_data);
+
+    if (!NET_CL_Connect(addr, &connect_data))
+    {
+        NET_ReleaseAddress(addr);
+        return false;
+    }
+
+    NET_ReleaseAddress(addr);
+
+    // Blocks, drawing its own screen, until the game is launched or it gives up
+    NET_WaitForLaunch();
+
+
+    if (!net_client_connected)
+    {
+        return false;
+    }
+
+    netgame = true;
+    autostart = true;
+
+    SaveGameSettings(&settings);
+    D_StartNetGame(&settings, NULL);
+    LoadGameSettings(&settings);
+
+    // [circle] The loop has been running since the title screen, so its tic
+    // counters are far ahead of a server that starts counting at zero.
+    // Without this the client dies with "lowtic < gametic" the moment it
+    // tries to run a tic. Startup never has to think about it: nothing has
+    // run yet.
+    D_ResetLoop();
+
+
+    G_DeferedInitNew(startskill, startepisode, startmap);
+
+    return true;
+}
+
+boolean D_NetHost(void)
+{
+    net_addr_t *addr;
+
+    NET_SV_Init();
+    NET_SV_AddModule(&net_loop_server_module);
+    NET_SV_AddModule(&net_sdl_module);
+
+    // The host plays too, so it joins its own server through the loopback
+    // module rather than going out over the wire to itself.
+    net_loop_client_module.InitClient();
+    addr = net_loop_client_module.ResolveAddress(NULL);
+    NET_ReferenceAddress(addr);
+
+    return D_NetStart(addr);
+}
+
+boolean D_NetJoin(void)
+{
+    // Broadcast for a server on the LAN. Nobody is typing an IP address into a
+    // phone, and on a mesh there may not be one worth typing.
+    return D_NetStart(NET_FindLANServer());
+}
+
 void D_CheckNetGame (void)
 {
     net_gamesettings_t settings;

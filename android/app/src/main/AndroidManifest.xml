@@ -8,6 +8,13 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- [circle] Netgames. INTERNET covers the UDP sockets; the wifi ones are
+         for finding a host by broadcast on the local network, which needs a
+         multicast lock on some devices. No traffic leaves the LAN. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
     <application android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"

@@ -1,7 +1,9 @@
 package net.thegeek.doom;
 
 import android.content.pm.ActivityInfo;
+import android.content.Context;
 import android.media.AudioManager;
+import android.net.wifi.WifiManager;
 import android.net.Uri;
 import android.os.Bundle;
 import java.io.File;
@@ -15,6 +17,8 @@ import org.libsdl.app.SDLActivity;
 // hands off to SDLActivity which loads libmain.so -> SDL_main == crispy main().
 public class DoomActivity extends SDLActivity {
 
+    private WifiManager.MulticastLock multicastLock;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // DOOM is a landscape game; in portrait crispy's widescreen sizing runs
@@ -25,6 +29,21 @@ public class DoomActivity extends SDLActivity {
         // stream, where SDL plays). Without this the rocker adjusts the ring
         // stream by default, so pressing it does nothing to DOOM's volume.
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        // Finding a host on the LAN means listening for a broadcast, and on
+        // several Android versions the wifi stack drops those unless something
+        // is holding a multicast lock. Held for the life of the activity: it
+        // costs a little battery and buys netgame discovery working at all.
+        try {
+            WifiManager wifi = (WifiManager)
+                getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wifi != null) {
+                multicastLock = wifi.createMulticastLock("doom-netgame");
+                multicastLock.setReferenceCounted(false);
+                multicastLock.acquire();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         try {
             extractAsset("freedoom2.wad");
         } catch (Exception e) {

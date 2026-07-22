@@ -1945,6 +1945,15 @@ void G_DoReborn (int playernum)
 	// respawn at the start
 
 	// first dissasociate the corpse 
+	// [circle] No body to dissociate. G_Ticker runs its reborn pass before it
+	// processes a pending ga_newgame, so a netgame started from the menu
+	// arrives here with no level loaded. Leave the player reborn -- the level
+	// spawn is what places them.
+	if (players[playernum].mo == NULL)
+	{
+	    return;
+	}
+
 	players[playernum].mo->player = NULL;   
 		 
 	// spawn at random spot if in death match 

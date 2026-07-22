@@ -228,6 +228,8 @@ static void M_QuitDOOM(int choice);
 
 static void M_ChangeMessages(int choice);
 static void M_ChangeBots(int choice);
+static void M_Multiplayer(int choice);
+static void M_DrawMultiplayer(void);
 static void M_ChangeSensitivity(int choice);
 static void M_ChangeSensitivity_x2(int choice); // [crispy] mouse sensitivity menu
 static void M_ChangeSensitivity_y(int choice); // [crispy] mouse sensitivity menu
@@ -450,6 +452,7 @@ enum
     soundvol,
     crispness, // [crispy] Crispness menu
     bots,
+    multiplayer,
     opt_end
 } options_e;
 
@@ -465,7 +468,8 @@ menuitem_t OptionsMenu[]=
     {1,"M_CRISPY",	M_CrispnessCur,'c', "Crispness"}, // [crispy] Crispness menu
     // [circle] There is no M_BOTS lump and none is wanted: the item draws
     // from its alttext, which is the sharper path anyway.
-    {2,"M_BOTS",	M_ChangeBots,'b', "Bots"}
+    {2,"M_BOTS",	M_ChangeBots,'b', "Bots"},
+    {1,"M_MULTI",	M_Multiplayer,'m', "Multiplayer"}
 };
 
 menu_t  OptionsDef =
@@ -1844,6 +1848,69 @@ void M_EndGame(int choice)
 //
 // M_ReadThis
 //
+// [circle] --- multiplayer ---------------------------------------------------
+
+boolean D_NetHost(void);
+boolean D_NetJoin(void);
+
+static void M_HostGame(int choice)
+{
+    choice = 0;
+    M_ClearMenus();
+
+    if (!D_NetHost())
+    {
+        players[consoleplayer].message = "Could not start a game";
+    }
+}
+
+static void M_JoinGame(int choice)
+{
+    choice = 0;
+    M_ClearMenus();
+
+    if (!D_NetJoin())
+    {
+        players[consoleplayer].message = "No game found nearby";
+    }
+}
+
+enum
+{
+    multi_host,
+    multi_join,
+    multi_end
+} multi_e;
+
+static menuitem_t MultiMenu[]=
+{
+    {1,"M_MHOST",	M_HostGame,'h', "Host a Game"},
+    {1,"M_MJOIN",	M_JoinGame,'j', "Join a Game"}
+};
+
+static menu_t MultiDef =
+{
+    multi_end,
+    &OptionsDef,
+    MultiMenu,
+    M_DrawMultiplayer,
+    80,80,
+    0
+};
+
+static void M_DrawMultiplayer(void)
+{
+    M_DrawTitle(50, "Multiplayer");
+    M_WriteText(28, 140, "Both players need the same game, and to be");
+    M_WriteText(28, 152, "on the same network. Host first, then join.");
+}
+
+static void M_Multiplayer(int choice)
+{
+    choice = 0;
+    M_SetupNextMenu(&MultiDef);
+}
+
 void M_ReadThis(int choice)
 {
     choice = 0;

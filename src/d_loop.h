@@ -66,6 +66,10 @@ void TryRunTics (void);
 // Called at start of game loop to initialize timers
 void D_StartGameLoop(void);
 
+// [circle] Put the tic counters back to zero, for a netgame started from the
+// menu rather than from the command line.
+void D_ResetLoop(void);
+
 // Initialize networking code and connect to server.
 
 boolean D_InitNetGame(net_connect_data_t *connect_data);
