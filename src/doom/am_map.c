@@ -2003,7 +2003,9 @@ void AM_drawPlayers(void)
 	// the netgame loop below, which would recolour the human as well.
 	for (i = 1; i < MAXPLAYERS; i++)
 	{
-	    if (!P_BotInGame(i) || players[i].mo == NULL)
+	    // Only the ones on your side. Drawing a hunter on your map would
+	    // hand you the fight before it started.
+	    if (!P_BotInGame(i) || P_BotHostile() || players[i].mo == NULL)
 		continue;
 
 	    pt.x = players[i].mo->x >> FRACTOMAPBITS;

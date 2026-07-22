@@ -5,18 +5,30 @@
 #ifndef __P_BOT__
 #define __P_BOT__
 
+#include "doomdef.h"
 #include "doomtype.h"
 #include "d_ticcmd.h"
 
-// How many of the spare player slots to fill. 0 disables bots entirely.
-extern int botcount;
+// One dial for the whole thing: negative is that many marines fighting with
+// you, positive is that many hunting you, zero is alone. Its magnitude is how
+// many player slots get filled, so the four-player limit enforces itself and
+// there is no combination to get wrong.
+//
+// Both halves are the same game -- same map, same monsters. Only whose side the
+// other marines are on changes, so a run at -2 and a run at +2 are comparable.
+extern int botbalance;
+
+#define BOT_MAXBALANCE (MAXPLAYERS - 1)
 
 // Claims or releases bot slots for the level about to load. Call before
 // P_SetupLevel, which is what actually spawns the players it finds claimed.
 void P_BotInit(void);
 
 // Menu hook. Takes effect immediately if a level is running.
-void P_BotSetCount(int n);
+void P_BotSetBalance(int n);
+
+// True while the bots are hunting the human rather than helping.
+boolean P_BotHostile(void);
 
 boolean P_BotInGame(int playernum);
 

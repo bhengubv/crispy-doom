@@ -465,7 +465,7 @@ menuitem_t OptionsMenu[]=
     {1,"M_CRISPY",	M_CrispnessCur,'c', "Crispness"}, // [crispy] Crispness menu
     // [circle] There is no M_BOTS lump and none is wanted: the item draws
     // from its alttext, which is the sharper path anyway.
-    {3,"M_BOTS",	M_ChangeBots,'b', "Bots: "}
+    {2,"M_BOTS",	M_ChangeBots,'b', "Bots"}
 };
 
 menu_t  OptionsDef =
@@ -1477,14 +1477,23 @@ void M_DrawOptions(void)
 */
 
     {
-	static char botstr[8];
+	// [circle] One dial: marines with you to the left, marines hunting you to
+	// the right, you on your own in the middle. Drawn as a deflection from
+	// the centre rather than a level, because that is what it is.
+	const int y = OptionsDef.y + LINEHEIGHT * bots;
+	static char botstr[16];
 
-	if (botcount > 0)
-	    M_snprintf(botstr, sizeof(botstr), "%d", botcount);
+	AX_Thermo(OptionsDef.x + 46, y - 2, 96, 12,
+		  (botbalance + BOT_MAXBALANCE) / (2.0f * BOT_MAXBALANCE), 0.5f);
 
-	M_WriteText(OptionsDef.x + M_StringWidth("Bots: "),
-		    OptionsDef.y + LINEHEIGHT * bots + 8 - (M_StringHeight("0")/2),
-		    botcount > 0 ? botstr : "Off");
+	if (botbalance < 0)
+	    M_snprintf(botstr, sizeof(botstr), "%d with you", -botbalance);
+	else if (botbalance > 0)
+	    M_snprintf(botstr, sizeof(botstr), "%d against", botbalance);
+	else
+	    M_StringCopy(botstr, "Solo", sizeof(botstr));
+
+	M_WriteText(OptionsDef.x + 148, y + 8 - (M_StringHeight("0")/2), botstr);
     }
 
     M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(scrnsize+1),
@@ -1773,13 +1782,7 @@ static void M_CrispnessPrev(int choice)
 // ceiling is DOOM's own four-player limit rather than a number picked here.
 static void M_ChangeBots(int choice)
 {
-    static char msg[24];
-
-    choice = 0;
-    P_BotSetCount(botcount + 1);
-
-    M_snprintf(msg, sizeof(msg), "%d bot%s", botcount, botcount == 1 ? "" : "s");
-    players[consoleplayer].message = botcount ? msg : "no bots";
+    P_BotSetBalance(botbalance + (choice ? 1 : -1));
 }
 
 void M_ChangeMessages(int choice)
@@ -2073,7 +2076,7 @@ M_DrawThermo
     const boolean native = AX_Thermo(x, y, 8 + thermWidth * 8 + 8, 13,
                                      thermWidth > 1
                                      ? (float) thermDot / (float)(thermWidth - 1)
-                                     : 0.0f);
+                                     : 0.0f, 0.0f);
 
     xx = x;
     if (!native)

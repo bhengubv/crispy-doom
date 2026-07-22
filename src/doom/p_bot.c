@@ -40,7 +40,12 @@
 #include "p_bot.h"
 #include "p_botnav.h"
 
-int botcount = 0;
+int botbalance = 0;
+
+boolean P_BotHostile(void)
+{
+    return botbalance > 0;
+}
 
 #define BOT_SIGHTRANGE  (2048 * FRACUNIT)
 #define BOT_HUNTRANGE   (1280 * FRACUNIT)   // worth walking to, unseen
@@ -132,7 +137,7 @@ void P_BotInit(void)
             continue;
         }
 
-        if (i <= botcount)
+        if (i <= abs(botbalance))
         {
             BotClaim(i);
         }
@@ -144,20 +149,20 @@ void P_BotInit(void)
     }
 }
 
-void P_BotSetCount(int n)
+void P_BotSetBalance(int n)
 {
     int i;
 
-    if (n < 0)
+    if (n < -BOT_MAXBALANCE)
     {
-        n = MAXPLAYERS - 1;
+        n = -BOT_MAXBALANCE;
     }
-    if (n > MAXPLAYERS - 1)
+    if (n > BOT_MAXBALANCE)
     {
-        n = 0;
+        n = BOT_MAXBALANCE;
     }
 
-    botcount = n;
+    botbalance = n;
 
     if (gamestate != GS_LEVEL)
     {
@@ -171,7 +176,7 @@ void P_BotSetCount(int n)
             continue;
         }
 
-        if (i <= botcount)
+        if (i <= abs(botbalance))
         {
             if (!bots[i].active)
             {
@@ -207,9 +212,18 @@ static boolean BotWorthShooting(const mobj_t *m, const player_t *self)
 
     if (m->player != NULL)
     {
-        // Co-op is the default, so hold fire on the other players unless the
-        // game is actually a deathmatch.
-        return deathmatch && m->player != self;
+        if (deathmatch)
+        {
+            return m->player != self;
+        }
+
+        // The right-hand half of the dial. The marines are hunting the human,
+        // in the ordinary campaign with the monsters still in it -- which is
+        // why this is not a deathmatch flag. Turning deathmatch on would strip
+        // the monsters out and make the two halves of the dial incomparable.
+        //
+        // They are a team against one player, so they never shoot each other.
+        return P_BotHostile() && m->player == &players[consoleplayer];
     }
 
     // Barrels are shootable but shooting one on sight just makes a bot that
@@ -299,6 +313,23 @@ static void BotRepath(bot_t *b, player_t *p, mobj_t *mo, int here)
         }
     }
 
+    // The human. Which way this cuts is the whole dial: a marine on your side
+    // only comes looking when you have got too far ahead, while one hunting you
+    // has no threshold and outranks the monsters -- otherwise the hunter gets
+    // distracted by the first imp it passes and never arrives.
+    if (playeringame[consoleplayer])
+    {
+        const mobj_t *lead = players[consoleplayer].mo;
+        fixed_t leash = P_BotHostile() ? 0 : BOT_LEASH;
+
+        if (goal == BN_NOWHERE && !deathmatch && lead != NULL
+         && players[consoleplayer].playerstate == PST_LIVE
+         && P_AproxDistance(lead->x - mo->x, lead->y - mo->y) > leash)
+        {
+            goal = BN_NodeAt(lead->x, lead->y);
+        }
+    }
+
     // Go and find a fight. Almost every monster on the level is behind a wall
     // at any given moment, so without this the bot spends its life exploring
     // past them -- which is exactly what it did before this existed.
@@ -309,17 +340,6 @@ static void BotRepath(bot_t *b, player_t *p, mobj_t *mo, int here)
         if (hunt != NULL)
         {
             goal = BN_NodeAt(hunt->x, hunt->y);
-        }
-    }
-
-    if (goal == BN_NOWHERE && !deathmatch && playeringame[consoleplayer])
-    {
-        const mobj_t *lead = players[consoleplayer].mo;
-
-        if (lead != NULL && players[consoleplayer].playerstate == PST_LIVE
-         && P_AproxDistance(lead->x - mo->x, lead->y - mo->y) > BOT_LEASH)
-        {
-            goal = BN_NodeAt(lead->x, lead->y);
         }
     }
 
@@ -572,12 +592,15 @@ void P_BotTiccmd(int playernum, ticcmd_t *cmd)
     if (engaging && dist < BOT_SIGHTRANGE && abs(delta) < (int) BOT_AIMED)
     {
         // Ask the engine what this shot would actually hit, using the same
-        // auto-aim the trigger pull will use. If the answer is a teammate,
-        // don't pull it. Co-op friendly fire is on in DOOM, and a bot happy to
-        // empty a shotgun through your back is worse than no bot at all.
+        // auto-aim the trigger pull will use, and hold fire if the answer is
+        // someone we are not supposed to be shooting. Friendly fire is on in
+        // DOOM, and a marine happy to empty a shotgun through your back is
+        // worse than no marine at all. The same test lets a hostile one shoot
+        // you, because there the answer is a target.
         P_AimLineAttack(mo, mo->angle, BOT_SIGHTRANGE);
 
-        if (deathmatch || linetarget == NULL || linetarget->player == NULL)
+        if (linetarget == NULL || linetarget->player == NULL
+         || BotWorthShooting(linetarget, p))
         {
             cmd->buttons |= BT_ATTACK;
         }

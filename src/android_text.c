@@ -63,6 +63,7 @@ typedef struct
 {
     short x, y, w, h;
     float frac;
+    float origin;
 } ax_thermo_t;
 
 static ax_run_t    ax_runs[AX_MAX_RUNS];
@@ -263,7 +264,7 @@ boolean AX_Glyph(int x, int y, int cellw, int cellh, char ch,
     return true;
 }
 
-boolean AX_Thermo(int x, int y, int w, int h, float frac)
+boolean AX_Thermo(int x, int y, int w, int h, float frac, float origin)
 {
     ax_thermo_t *t;
 
@@ -278,6 +279,7 @@ boolean AX_Thermo(int x, int y, int w, int h, float frac)
     t->w = (short) w;
     t->h = (short) h;
     t->frac = frac < 0.0f ? 0.0f : (frac > 1.0f ? 1.0f : frac);
+    t->origin = origin < 0.0f ? 0.0f : (origin > 1.0f ? 1.0f : origin);
 
     return true;
 }
@@ -455,14 +457,19 @@ void AX_Draw(SDL_Renderer *r)
         track.y = fr.y + t->y * py + (t->h * py - bar) * 0.5f;
         track.h = bar;
 
+        // Fill from the origin to the knob rather than always from the left, so
+        // a dial that runs negative-zero-positive reads as a deflection from
+        // the middle instead of a level that happens to be half full.
         fill = track;
-        fill.w = track.w * t->frac;
+        fill.x = track.x + track.w * (t->origin < t->frac ? t->origin : t->frac);
+        fill.w = track.w * (t->frac > t->origin
+                            ? t->frac - t->origin : t->origin - t->frac);
 
         // Knob sized off the bar rather than the track, so it stays a knob at
         // any panel size instead of a square that grows with the slider.
         knob.w = bar * 2.2f;
         knob.h = bar * 2.2f;
-        knob.x = track.x + fill.w - knob.w * 0.5f;
+        knob.x = track.x + track.w * t->frac - knob.w * 0.5f;
         knob.y = track.y + (bar - knob.h) * 0.5f;
 
         SDL_SetRenderDrawColor(r, 255, 255, 255, 46);

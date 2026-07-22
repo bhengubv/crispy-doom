@@ -21,9 +21,12 @@ boolean AX_Glyph(int x, int y, int cellw, int cellh, char ch,
                  const byte *trans);
 
 // Records a slider. x/y/w/h are the vanilla patch coordinates of the whole
-// control in 320x200 space; frac is 0..1. Returns false if it cannot be taken,
-// and the caller must fall back to the M_THERM* patches.
-boolean AX_Thermo(int x, int y, int w, int h, float frac);
+// control in 320x200 space; frac is 0..1. origin is where the filled part
+// starts, so 0 gives an ordinary left-to-right bar and 0.5 gives one that fills
+// outward from the middle -- which is what a dial running from negative through
+// zero to positive needs. Returns false if it cannot be taken, and the caller
+// must fall back to the M_THERM* patches.
+boolean AX_Thermo(int x, int y, int w, int h, float frac, float origin);
 
 // Replays and clears the queue, drawing at true panel resolution. Call after
 // the game frame has been copied to the renderer, before present.
