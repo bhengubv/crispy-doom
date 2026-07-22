@@ -43,6 +43,8 @@
 int botcount = 0;
 
 #define BOT_SIGHTRANGE  (2048 * FRACUNIT)
+#define BOT_HUNTRANGE   (1280 * FRACUNIT)   // worth walking to, unseen
+#define BOT_LONGSHOT    (512 * FRACUNIT)    // past here a shotgun is wasted
 #define BOT_FIGHTRANGE  (768 * FRACUNIT)
 #define BOT_MELEEHOLD   (192 * FRACUNIT)
 #define BOT_LOOKAHEAD   (56 * FRACUNIT)
@@ -215,11 +217,16 @@ static boolean BotWorthShooting(const mobj_t *m, const player_t *self)
     return m->type != MT_BARREL;
 }
 
-static mobj_t *BotPickTarget(player_t *p)
+// The nearest thing worth shooting. With needsight the bot must be able to see
+// it right now, which is the test for opening fire. Without, it is the test for
+// deciding where to walk -- most of the level's monsters are behind a wall at
+// any moment, and a bot that only ever considered the visible ones would tour
+// the map instead of fighting in it.
+static mobj_t *BotNearestEnemy(player_t *p, fixed_t maxdist, boolean needsight)
 {
     thinker_t *th;
     mobj_t    *best = NULL;
-    fixed_t    bestdist = BOT_SIGHTRANGE;
+    fixed_t    bestdist = maxdist;
 
     for (th = thinkercap.next; th != &thinkercap; th = th->next)
     {
@@ -240,7 +247,7 @@ static mobj_t *BotPickTarget(player_t *p)
 
         dist = P_AproxDistance(m->x - p->mo->x, m->y - p->mo->y);
 
-        if (dist >= bestdist || !P_CheckSight(p->mo, m))
+        if (dist >= bestdist || (needsight && !P_CheckSight(p->mo, m)))
         {
             continue;
         }
@@ -273,7 +280,7 @@ static boolean BotClearAhead(mobj_t *mo, angle_t ang)
 // you were just fighting, otherwise stay with the human, otherwise go and look
 // somewhere nobody has been. A bot that only ever explored would abandon you
 // mid-fight; one that only ever followed would never fetch anything.
-static void BotRepath(bot_t *b, mobj_t *mo, int here)
+static void BotRepath(bot_t *b, player_t *p, mobj_t *mo, int here)
 {
     int goal = BN_NOWHERE;
 
@@ -289,6 +296,19 @@ static void BotRepath(bot_t *b, mobj_t *mo, int here)
         {
             b->hasseen = false;     // arrived, and it was not there
             goal = BN_NOWHERE;
+        }
+    }
+
+    // Go and find a fight. Almost every monster on the level is behind a wall
+    // at any given moment, so without this the bot spends its life exploring
+    // past them -- which is exactly what it did before this existed.
+    if (goal == BN_NOWHERE)
+    {
+        const mobj_t *hunt = BotNearestEnemy(p, BOT_HUNTRANGE, false);
+
+        if (hunt != NULL)
+        {
+            goal = BN_NodeAt(hunt->x, hunt->y);
         }
     }
 
@@ -318,7 +338,7 @@ static void BotRepath(bot_t *b, mobj_t *mo, int here)
 // Returns the direction to walk. Following a route is only ever "aim at the
 // next doorway", because a subsector is convex: there is nothing inside one to
 // walk around.
-static angle_t BotNavigate(bot_t *b, mobj_t *mo)
+static angle_t BotNavigate(bot_t *b, player_t *p, mobj_t *mo)
 {
     int     here = BN_NodeAt(mo->x, mo->y);
     fixed_t px, py;
@@ -338,7 +358,7 @@ static angle_t BotNavigate(bot_t *b, mobj_t *mo)
 
     if (b->pathpos >= b->pathlen || --b->repath <= 0)
     {
-        BotRepath(b, mo, here);
+        BotRepath(b, p, mo, here);
     }
 
     if (b->pathpos < b->pathlen
@@ -357,18 +377,24 @@ static angle_t BotNavigate(bot_t *b, mobj_t *mo)
 // weapons
 // ---------------------------------------------------------------------------
 
-static void BotChooseWeapon(player_t *p, ticcmd_t *cmd)
+static void BotChooseWeapon(player_t *p, ticcmd_t *cmd, fixed_t dist)
 {
     // Deliberately no rocket launcher or BFG: a bot with no notion of splash
     // radius kills itself with them, and does it often enough to be the first
     // thing anyone notices. The shotgun entry also gets the super shotgun,
     // which the engine swaps in by itself when both are owned.
-    static const weapontype_t order[] = {
+    static const weapontype_t close[] = {
+        wp_plasma, wp_shotgun, wp_chaingun, wp_pistol, wp_chainsaw, wp_fist
+    };
+    // Past a certain range a shotgun's spread throws most of its pellets away,
+    // so reach for the chaingun instead.
+    static const weapontype_t far[] = {
         wp_plasma, wp_chaingun, wp_shotgun, wp_pistol, wp_chainsaw, wp_fist
     };
+    const weapontype_t *order = (dist > BOT_LONGSHOT) ? far : close;
     size_t i;
 
-    for (i = 0; i < sizeof(order) / sizeof(order[0]); i++)
+    for (i = 0; i < sizeof(close) / sizeof(close[0]); i++)
     {
         weapontype_t w = order[i];
         ammotype_t   a = weaponinfo[w].ammo;
@@ -420,8 +446,6 @@ void P_BotTiccmd(int playernum, ticcmd_t *cmd)
         return;
     }
 
-    BotChooseWeapon(p, cmd);
-
     // --- who are we fighting -----------------------------------------------
     if (b->target != NULL
      && (!BotWorthShooting(b->target, p) || !P_CheckSight(mo, b->target)))
@@ -439,13 +463,32 @@ void P_BotTiccmd(int playernum, ticcmd_t *cmd)
         b->target = NULL;
     }
 
+    // Whatever just hurt us outranks whatever we were looking at. The engine
+    // records it for free, and without this a bot being shot from across a room
+    // carries on exploring as though nothing were happening -- which was the
+    // single most inert-looking thing they did.
+    if (p->attacker != NULL && p->attacker != mo
+     && BotWorthShooting(p->attacker, p))
+    {
+        if (P_CheckSight(mo, p->attacker))
+        {
+            b->target = p->attacker;
+        }
+        else if (b->target == NULL)
+        {
+            b->seenx = p->attacker->x;
+            b->seeny = p->attacker->y;
+            b->hasseen = true;
+        }
+    }
+
     if (--b->retarget <= 0)
     {
         b->retarget = BOT_RETARGET;
 
         if (b->target == NULL)
         {
-            b->target = BotPickTarget(p);
+            b->target = BotNearestEnemy(p, BOT_SIGHTRANGE, true);
         }
     }
 
@@ -464,7 +507,7 @@ void P_BotTiccmd(int playernum, ticcmd_t *cmd)
             b->wander = mo->angle;
         }
 
-        want = BotNavigate(b, mo);
+        want = BotNavigate(b, p, mo);
 
         if (want == b->wander && !BotClearAhead(mo, b->wander))
         {
@@ -472,6 +515,8 @@ void P_BotTiccmd(int playernum, ticcmd_t *cmd)
             want = b->wander;
         }
     }
+
+    BotChooseWeapon(p, cmd, engaging ? dist : BOT_LONGSHOT);
 
     // --- face it ------------------------------------------------------------
     delta = (int)(want - mo->angle);
@@ -526,7 +571,16 @@ void P_BotTiccmd(int playernum, ticcmd_t *cmd)
     // --- shoot --------------------------------------------------------------
     if (engaging && dist < BOT_SIGHTRANGE && abs(delta) < (int) BOT_AIMED)
     {
-        cmd->buttons |= BT_ATTACK;
+        // Ask the engine what this shot would actually hit, using the same
+        // auto-aim the trigger pull will use. If the answer is a teammate,
+        // don't pull it. Co-op friendly fire is on in DOOM, and a bot happy to
+        // empty a shotgun through your back is worse than no bot at all.
+        P_AimLineAttack(mo, mo->angle, BOT_SIGHTRANGE);
+
+        if (deathmatch || linetarget == NULL || linetarget->player == NULL)
+        {
+            cmd->buttons |= BT_ATTACK;
+        }
     }
 
     // --- unstick ------------------------------------------------------------
