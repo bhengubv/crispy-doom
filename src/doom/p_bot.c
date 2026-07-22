@@ -1,0 +1,432 @@
+//
+// Bot players for Crispy Doom on Circle OS.
+//
+// A bot is not a monster. It is a *player* -- it occupies one of DOOM's spare
+// player slots, spawns at a player start, carries a player's weapons and takes
+// a player's damage. All this code does is produce the ticcmd that slot would
+// otherwise have received from the network: which way to face, whether to walk,
+// whether to pull the trigger.
+//
+// Doing it at the ticcmd is deliberate, and it is what makes the rest of the
+// roadmap possible. Spectator mode is then just a camera pointed at a slot
+// nobody is holding, and a netgame is the same slots fed from a socket instead
+// of from here. Bots written as a special kind of monster would have bought
+// none of that.
+//
+// It also keeps demos honest: G_Ticker records whatever ends up in the ticcmd,
+// so a demo recorded with bots replays as the bots' own commands rather than
+// re-running this code and drifting. The bot brain is therefore free to be
+// non-deterministic, and has its own RNG so it never disturbs the game's.
+//
+// What it is not, yet: there is no pathfinding. A bot chases what it can see
+// and wanders when it cannot, feeling its way past walls. That is enough to
+// fight alongside you and enough to be watched, which is what bots are needed
+// for first. Real navigation is the next piece of work, not a missing bit of
+// this one.
+//
+
+#include <stdlib.h>
+#include <string.h>
+
+#include "doomdef.h"
+#include "doomstat.h"
+
+#include "d_event.h"
+#include "d_player.h"
+#include "info.h"
+#include "p_local.h"
+#include "tables.h"
+
+#include "p_bot.h"
+
+int botcount = 0;
+
+#define BOT_SIGHTRANGE  (2048 * FRACUNIT)
+#define BOT_FIGHTRANGE  (768 * FRACUNIT)
+#define BOT_MELEEHOLD   (192 * FRACUNIT)
+#define BOT_LOOKAHEAD   (56 * FRACUNIT)
+#define BOT_TURNMAX     1280        // a player's own fast-turn rate
+#define BOT_AIMED       (ANG45 / 8) // close enough to shoot
+#define BOT_RETARGET    10          // tics between target searches
+#define BOT_STUCK       8           // tics of no progress before we give up
+
+typedef struct
+{
+    boolean   active;
+    mobj_t   *target;
+    int       retarget;
+    angle_t   wander;
+    int       stucktics;
+    fixed_t   lastx, lasty;
+    int       strafe;
+    int       clock;
+    unsigned  rng;
+} bot_t;
+
+static bot_t bots[MAXPLAYERS];
+
+// Bots must never touch P_Random: that sequence is the game's, and demos and
+// savegames depend on how far through it we are.
+static unsigned BotRandom(bot_t *b)
+{
+    b->rng ^= b->rng << 13;
+    b->rng ^= b->rng >> 17;
+    b->rng ^= b->rng << 5;
+    return b->rng;
+}
+
+// ---------------------------------------------------------------------------
+// slots
+// ---------------------------------------------------------------------------
+
+boolean P_BotInGame(int playernum)
+{
+    return playernum >= 0 && playernum < MAXPLAYERS
+        && playernum != consoleplayer
+        && bots[playernum].active && playeringame[playernum];
+}
+
+static void BotClaim(int i)
+{
+    memset(&bots[i], 0, sizeof(bots[i]));
+    bots[i].active = true;
+    bots[i].rng = 0x9e3779b9u * (unsigned)(i + 1);
+
+    if (!playeringame[i])
+    {
+        playeringame[i] = true;
+        players[i].playerstate = PST_REBORN;
+    }
+}
+
+void P_BotInit(void)
+{
+    int i;
+
+    for (i = 0; i < MAXPLAYERS; i++)
+    {
+        if (i == consoleplayer)
+        {
+            continue;
+        }
+
+        if (i <= botcount)
+        {
+            BotClaim(i);
+        }
+        else
+        {
+            memset(&bots[i], 0, sizeof(bots[i]));
+            playeringame[i] = false;
+        }
+    }
+}
+
+void P_BotSetCount(int n)
+{
+    int i;
+
+    if (n < 0)
+    {
+        n = MAXPLAYERS - 1;
+    }
+    if (n > MAXPLAYERS - 1)
+    {
+        n = 0;
+    }
+
+    botcount = n;
+
+    if (gamestate != GS_LEVEL)
+    {
+        return;     // P_BotInit will pick it up when the level loads
+    }
+
+    for (i = 1; i < MAXPLAYERS; i++)
+    {
+        if (i == consoleplayer)
+        {
+            continue;
+        }
+
+        if (i <= botcount)
+        {
+            if (!bots[i].active)
+            {
+                BotClaim(i);    // G_Ticker's reborn pass spawns it
+            }
+        }
+        else if (bots[i].active)
+        {
+            // Stop thinking for it and kill the body. Unhooking a live mobj
+            // mid-level would leave whatever was chasing it holding a dangling
+            // target; letting it die is the path the game already handles, and
+            // a bot that stops respawning simply stays down.
+            bots[i].active = false;
+
+            if (players[i].mo != NULL && players[i].playerstate == PST_LIVE)
+            {
+                P_DamageMobj(players[i].mo, NULL, NULL, 10000);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// perception
+// ---------------------------------------------------------------------------
+
+static boolean BotWorthShooting(const mobj_t *m, const player_t *self)
+{
+    if (m->health <= 0 || !(m->flags & MF_SHOOTABLE) || (m->flags & MF_CORPSE))
+    {
+        return false;
+    }
+
+    if (m->player != NULL)
+    {
+        // Co-op is the default, so hold fire on the other players unless the
+        // game is actually a deathmatch.
+        return deathmatch && m->player != self;
+    }
+
+    // Barrels are shootable but shooting one on sight just makes a bot that
+    // walks into rooms and blows itself up.
+    return m->type != MT_BARREL;
+}
+
+static mobj_t *BotPickTarget(player_t *p)
+{
+    thinker_t *th;
+    mobj_t    *best = NULL;
+    fixed_t    bestdist = BOT_SIGHTRANGE;
+
+    for (th = thinkercap.next; th != &thinkercap; th = th->next)
+    {
+        mobj_t *m;
+        fixed_t dist;
+
+        if (th->function.acp1 != (actionf_p1) P_MobjThinker)
+        {
+            continue;
+        }
+
+        m = (mobj_t *) th;
+
+        if (m == p->mo || !BotWorthShooting(m, p))
+        {
+            continue;
+        }
+
+        dist = P_AproxDistance(m->x - p->mo->x, m->y - p->mo->y);
+
+        if (dist >= bestdist || !P_CheckSight(p->mo, m))
+        {
+            continue;
+        }
+
+        bestdist = dist;
+        best = m;
+    }
+
+    return best;
+}
+
+// Can we walk that way without immediately hitting something? This is a probe,
+// not a path: it is what lets a bot slide along a wall instead of pressing into
+// it, and nothing more.
+static boolean BotClearAhead(mobj_t *mo, angle_t ang)
+{
+    unsigned fine = ang >> ANGLETOFINESHIFT;
+
+    return P_CheckPosition(mo,
+                           mo->x + FixedMul(BOT_LOOKAHEAD, finecosine[fine]),
+                           mo->y + FixedMul(BOT_LOOKAHEAD, finesine[fine]));
+}
+
+// ---------------------------------------------------------------------------
+// weapons
+// ---------------------------------------------------------------------------
+
+static void BotChooseWeapon(player_t *p, ticcmd_t *cmd)
+{
+    // Deliberately no rocket launcher or BFG: a bot with no notion of splash
+    // radius kills itself with them, and does it often enough to be the first
+    // thing anyone notices. The shotgun entry also gets the super shotgun,
+    // which the engine swaps in by itself when both are owned.
+    static const weapontype_t order[] = {
+        wp_plasma, wp_chaingun, wp_shotgun, wp_pistol, wp_chainsaw, wp_fist
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof(order) / sizeof(order[0]); i++)
+    {
+        weapontype_t w = order[i];
+        ammotype_t   a = weaponinfo[w].ammo;
+
+        if (!p->weaponowned[w])
+        {
+            continue;
+        }
+        if (a != am_noammo && p->ammo[a] <= 0)
+        {
+            continue;
+        }
+
+        if (p->readyweapon != w && p->pendingweapon == wp_nochange)
+        {
+            cmd->buttons |= BT_CHANGE | (w << BT_WEAPONSHIFT);
+        }
+        return;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// the tic
+// ---------------------------------------------------------------------------
+
+void P_BotTiccmd(int playernum, ticcmd_t *cmd)
+{
+    bot_t    *b = &bots[playernum];
+    player_t *p = &players[playernum];
+    mobj_t   *mo = p->mo;
+    angle_t   want;
+    fixed_t   dist = 0;
+    int       delta, turn;
+    boolean   engaging = false;
+
+    memset(cmd, 0, sizeof(*cmd));
+
+    b->clock++;
+
+    if (mo == NULL || p->playerstate != PST_LIVE)
+    {
+        // Dead. Ask to respawn the way a player does, but not instantly --
+        // watching a bot pop back up the frame it dies looks like a glitch.
+        if (p->playerstate == PST_DEAD && b->active && (b->clock & 31) == 0)
+        {
+            cmd->buttons |= BT_USE;
+        }
+        b->target = NULL;
+        return;
+    }
+
+    BotChooseWeapon(p, cmd);
+
+    // --- who are we fighting -----------------------------------------------
+    if (b->target != NULL
+     && (!BotWorthShooting(b->target, p) || !P_CheckSight(mo, b->target)))
+    {
+        b->target = NULL;
+    }
+
+    if (--b->retarget <= 0)
+    {
+        b->retarget = BOT_RETARGET;
+
+        if (b->target == NULL)
+        {
+            b->target = BotPickTarget(p);
+        }
+    }
+
+    if (b->target != NULL)
+    {
+        dist = P_AproxDistance(b->target->x - mo->x, b->target->y - mo->y);
+        want = R_PointToAngle2(mo->x, mo->y, b->target->x, b->target->y);
+        engaging = true;
+    }
+    else
+    {
+        // Nothing in sight. Keep walking the way we were, turning when the way
+        // ahead runs out, so the bot explores instead of pacing on the spot.
+        if (b->wander == 0 && b->clock < 2)
+        {
+            b->wander = mo->angle;
+        }
+        if (!BotClearAhead(mo, b->wander))
+        {
+            b->wander += (BotRandom(b) & 1) ? ANG45 : (angle_t) -ANG45;
+        }
+        want = b->wander;
+    }
+
+    // --- face it ------------------------------------------------------------
+    delta = (int)(want - mo->angle);
+    turn = delta / 65536;
+
+    if (turn > BOT_TURNMAX)
+    {
+        turn = BOT_TURNMAX;
+    }
+    else if (turn < -BOT_TURNMAX)
+    {
+        turn = -BOT_TURNMAX;
+    }
+
+    cmd->angleturn = (short) turn;
+
+    // --- move ---------------------------------------------------------------
+    if (engaging && dist < BOT_MELEEHOLD && weaponinfo[p->readyweapon].ammo != am_noammo)
+    {
+        cmd->forwardmove = 0;   // close enough; don't crowd it
+    }
+    else if (BotClearAhead(mo, mo->angle))
+    {
+        cmd->forwardmove = (engaging && dist < BOT_FIGHTRANGE) ? 25 : 50;
+    }
+    else
+    {
+        // Blocked. Sidestep rather than grind into the wall.
+        cmd->forwardmove = 0;
+        b->strafe = (BotRandom(b) & 1) ? 1 : -1;
+    }
+
+    if (engaging && dist < BOT_FIGHTRANGE)
+    {
+        // Circle-strafe while fighting. A bot that walks straight at things is
+        // both easy to hit and dull to watch.
+        if ((b->clock % 35) == 0)
+        {
+            b->strafe = (BotRandom(b) & 1) ? 1 : -1;
+        }
+        cmd->sidemove = (signed char)(b->strafe * 40);
+    }
+    else if (b->strafe != 0)
+    {
+        cmd->sidemove = (signed char)(b->strafe * 40);
+        if ((b->clock & 7) == 0)
+        {
+            b->strafe = 0;
+        }
+    }
+
+    // --- shoot --------------------------------------------------------------
+    if (engaging && dist < BOT_SIGHTRANGE && abs(delta) < (int) BOT_AIMED)
+    {
+        cmd->buttons |= BT_ATTACK;
+    }
+
+    // --- unstick ------------------------------------------------------------
+    if (abs(mo->x - b->lastx) + abs(mo->y - b->lasty) < 2 * FRACUNIT)
+    {
+        if (++b->stucktics > BOT_STUCK)
+        {
+            b->stucktics = 0;
+            b->wander = mo->angle + ((BotRandom(b) & 1) ? ANG90 : (angle_t) -ANG90);
+            b->target = NULL;
+            b->strafe = (BotRandom(b) & 1) ? 1 : -1;
+
+            // Doors and lifts read as walls to a bot with no map knowledge, so
+            // try the wall it is stuck against before assuming it is solid.
+            cmd->buttons |= BT_USE;
+        }
+    }
+    else
+    {
+        b->stucktics = 0;
+    }
+
+    b->lastx = mo->x;
+    b->lasty = mo->y;
+}

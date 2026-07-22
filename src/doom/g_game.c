@@ -76,6 +76,7 @@
 
 
 #include "g_game.h"
+#include "p_bot.h"
 #include "v_trans.h" // [crispy] colored "always run" message
 
 #include "deh_main.h" // [crispy] for demo footer
@@ -1141,6 +1142,10 @@ void G_DoLoadLevel (void)
         }
     }
 
+    // [circle] Claim bot slots first: P_SetupLevel is what spawns players
+    // into whichever slots it finds occupied.
+    P_BotInit();
+
     P_SetupLevel (gameepisode, gamemap, 0, gameskill);    
     displayplayer = consoleplayer;		// view the guy you are playing    
     gameaction = ga_nothing; 
@@ -1521,6 +1526,12 @@ void G_Ticker (void)
 	    cmd = &players[i].cmd; 
 
 	    memcpy(cmd, &netcmds[i], sizeof(ticcmd_t));
+
+	    // [circle] A bot drives its own slot. Sourced here, above the demo
+	    // calls below, so a recorded demo keeps what the bot did and replays
+	    // it from the file rather than re-running the brain and drifting.
+	    if (!demoplayback && P_BotInGame(i))
+		P_BotTiccmd(i, cmd);
 
 	    if (demoplayback) 
 		G_ReadDemoTiccmd (cmd); 
@@ -1905,7 +1916,10 @@ void G_DoReborn (int playernum)
 { 
     int                             i; 
 	 
-    if (!netgame)
+    // [circle] Reloading the level is what happens when the only player
+    // dies. A bot dying is not that, so send it down the respawn-at-a-start
+    // path a netgame would take.
+    if (!netgame && !P_BotInGame(playernum))
     {
 	// [crispy] if the player dies and the game has been loaded or saved
 	// in the mean time, reload that savegame instead of restarting the level

@@ -44,6 +44,7 @@
 
 // State.
 #include "doomstat.h"
+#include "p_bot.h"
 #include "r_state.h"
 
 // Data.
@@ -1996,6 +1997,26 @@ void AM_drawPlayers(void)
 	    AM_drawLineCharacter
 		(player_arrow, arrlen(player_arrow), 0, smoothangle,
 		 WHITE, pt.x, pt.y);
+
+	// [circle] Bots hold player slots that the single-player path never
+	// expects to be occupied. Draw them here rather than falling through to
+	// the netgame loop below, which would recolour the human as well.
+	for (i = 1; i < MAXPLAYERS; i++)
+	{
+	    if (!P_BotInGame(i) || players[i].mo == NULL)
+		continue;
+
+	    pt.x = players[i].mo->x >> FRACTOMAPBITS;
+	    pt.y = players[i].mo->y >> FRACTOMAPBITS;
+
+	    if (crispy->automaprotate)
+		AM_rotatePoint(&pt);
+
+	    AM_drawLineCharacter
+		(player_arrow, arrlen(player_arrow), 0, players[i].mo->angle,
+		 their_colors[i], pt.x, pt.y);
+	}
+
 	return;
     }
 

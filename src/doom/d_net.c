@@ -29,6 +29,7 @@
 #include "g_game.h"
 #include "doomdef.h"
 #include "doomstat.h"
+#include "p_bot.h"
 #include "w_checksum.h"
 #include "w_wad.h"
 
@@ -76,7 +77,11 @@ static void RunTic(ticcmd_t *cmds, boolean *ingame)
 
     for (i = 0; i < MAXPLAYERS; ++i)
     {
-        if (!demoplayback && playeringame[i] && !ingame[i])
+        // [circle] A bot holds a player slot the network layer knows nothing
+        // about, so the single-player path reports it as not in the game on
+        // every tic. Without this exemption the bot is quit out one tic after
+        // it spawns -- which is exactly what it did.
+        if (!demoplayback && playeringame[i] && !ingame[i] && !P_BotInGame(i))
         {
             PlayerQuitGame(&players[i]);
         }

@@ -63,6 +63,7 @@
 
 #include "m_menu.h"
 #include "android_text.h"
+#include "p_bot.h"
 #include "m_crispy.h" // [crispy] Crispness menu
 
 #include "v_trans.h" // [crispy] colored "invert mouse" message
@@ -226,6 +227,7 @@ static void M_ReadThis2(int choice);
 static void M_QuitDOOM(int choice);
 
 static void M_ChangeMessages(int choice);
+static void M_ChangeBots(int choice);
 static void M_ChangeSensitivity(int choice);
 static void M_ChangeSensitivity_x2(int choice); // [crispy] mouse sensitivity menu
 static void M_ChangeSensitivity_y(int choice); // [crispy] mouse sensitivity menu
@@ -447,6 +449,7 @@ enum
     mousesens,
     soundvol,
     crispness, // [crispy] Crispness menu
+    bots,
     opt_end
 } options_e;
 
@@ -459,7 +462,10 @@ menuitem_t OptionsMenu[]=
     {-1,"",0,'\0'},
     {1,"M_MSENS",	M_Mouse,'m', "Mouse Sensitivity"}, // [crispy] mouse sensitivity menu
     {1,"M_SVOL",	M_Sound,'s', "Sound Volume"},
-    {1,"M_CRISPY",	M_CrispnessCur,'c', "Crispness"} // [crispy] Crispness menu
+    {1,"M_CRISPY",	M_CrispnessCur,'c', "Crispness"}, // [crispy] Crispness menu
+    // [circle] There is no M_BOTS lump and none is wanted: the item draws
+    // from its alttext, which is the sharper path anyway.
+    {3,"M_BOTS",	M_ChangeBots,'b', "Bots: "}
 };
 
 menu_t  OptionsDef =
@@ -1470,6 +1476,17 @@ void M_DrawOptions(void)
 		 10, mouseSensitivity);
 */
 
+    {
+	static char botstr[8];
+
+	if (botcount > 0)
+	    M_snprintf(botstr, sizeof(botstr), "%d", botcount);
+
+	M_WriteText(OptionsDef.x + M_StringWidth("Bots: "),
+		    OptionsDef.y + LINEHEIGHT * bots + 8 - (M_StringHeight("0")/2),
+		    botcount > 0 ? botstr : "Off");
+    }
+
     M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(scrnsize+1),
 		 9 + (crispy->widescreen ? 6 : 3),screenSize); // [crispy] Crispy HUD
 }
@@ -1752,6 +1769,19 @@ static void M_CrispnessPrev(int choice)
 //
 //      Toggle messages on/off
 //
+// [circle] Cycles 0..MAXPLAYERS-1. Bots take the spare player slots, so the
+// ceiling is DOOM's own four-player limit rather than a number picked here.
+static void M_ChangeBots(int choice)
+{
+    static char msg[24];
+
+    choice = 0;
+    P_BotSetCount(botcount + 1);
+
+    M_snprintf(msg, sizeof(msg), "%d bot%s", botcount, botcount == 1 ? "" : "s");
+    players[consoleplayer].message = botcount ? msg : "no bots";
+}
+
 void M_ChangeMessages(int choice)
 {
     // warning: unused parameter `int choice'
